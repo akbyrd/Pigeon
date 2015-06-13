@@ -1,5 +1,6 @@
 #TODO
 #	Better notification of changes (overwrite previous note, notify failure, clean up parameters)
+#	Partial name matching
 
 Param (
 	[ValidateSet("ToggleRefresh", "SetRefresh", "ToggleAudio", "SetAudio")]
@@ -76,7 +77,7 @@ end {
 	{
 		Import-Module AudioDeviceCmdlets
 		$speakerName = "Speakers (Realtek High Definition Audio)"
-		$headsetName = "Speakers (2- SteelSeries H Wireless)"
+		$headsetName = "Headset (4- SteelSeries H Wireless)"
 
 		$currentDeviceName = (Get-DefaultAudioDevice).DeviceFriendlyName
 

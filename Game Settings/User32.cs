@@ -51,7 +51,6 @@
 
 		#endregion
 
-		//TODO: Remove unnecessary fields
 		[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Ansi)]
 		public struct DEVMODE
 		{

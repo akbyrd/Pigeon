@@ -4,10 +4,10 @@
 	using System.Collections.Generic;
 	using System.Linq;
 	using CommandLine;
+	//using CoreAudioApi;
 
-	//TODO: System tray notification
-	//TODO: Option for notification
 	//TODO: Add Audio Device support
+	//TODO: Implement proper notification
 
 	internal class Program
 	{
@@ -31,7 +31,11 @@
 			{
 				if ( result.IsError ) { ret = -1; }
 
-				Console.WriteLine(result.LongOutput);
+				if ( result.Notify && options.Toast )
+					Notification.Notify(result.ShortOutput);
+
+				if ( result.IsError || options.Verbose )
+					Console.WriteLine(result.LongOutput);
 			}
 
 			return ret;
@@ -41,55 +45,47 @@
 
 		private class Options
 		{
-			//[CommandLine.Option('e', "useErrorDialogs")]
-			//public bool UseErrorDialogs { get; set; }
-
 			//[CommandLine.Option('f', "force")]
 			//public bool Force { get; set; }
 
-			//TODO: Other syntax
-			//      RefreshRate-Set, RefreshRate-Toggle, RefreshRate-ToggleGroup
+			[Option('v', "verbose")]
+			public bool Verbose { get; set; }
+
+			private const string ToastHelp = "Display a short toast notification with results.";
+			[Option('t', "toast")]
+			public bool Toast { get; set; }
 
 			private const string RRSetName = "Refresh";
-			private const string RRToggleHelp = "Cycles through up to 5 provided refresh rates at the current resolution. If none are provided, cycles through all supported refresh rates at the current resolution.";
-			[Option('r', "ToggleRefreshRate", Min = 0, Max = 5, DefaultValue = null, HelpText = RRToggleHelp, SetName = RRSetName)]
+			private const string RRToggleHelp = "Cycles through provided refresh rates at the current resolution. If none are provided, cycles through all supported refresh rates at the current resolution.";
+			[Option('r', "ToggleRefreshRate", Min = 0, DefaultValue = null, HelpText = RRToggleHelp, SetName = RRSetName)]
 			public IEnumerable<int> ToggleRefreshRate { get; set; }
 
 			private const string RRSetHelp = "Set refresh rate to the provided value. The current resolution is maintained.";
 			[Option('s', "SetRefreshRate", SetName = RRSetName, HelpText = RRSetHelp)]
 			public int? SetRefreshRate { get; set; }
 
-			//private const string ADSetName = "AudioDevice";
-			//[CommandLine.Option('a', "ToggleAudioDevice", SetName = ADSetName)]
-			//public bool? ToggleAudioDevice { get; set; }
+			private const string ADSetName = "AudioDevice";
+			private const string ADToggleHelp = "Cycles through provided audio playback devices. If none are provided, cycles through all enabled playback devices.";
+			[Option('a', "ToggleAudioDevice", Min = 0, DefaultValue = null, HelpText = ADToggleHelp, SetName = ADSetName)]
+			public IEnumerable<string> ToggleAudioDevice { get; set; }
 
-			//[CommandLine.Option('b', "SetAudioDevice", SetName = ADSetName)]
-			//public string SetAudioDevice { get; set; }
-		}
-
-		private class Result
-		{
-			public readonly bool   IsError;
-			public readonly string ShortOutput;
-			public readonly string LongOutput;
-
-			public Result ( bool isError, string longOutput, string shortOutput = null )
-			{
-				IsError = isError;
-				LongOutput = longOutput;
-				ShortOutput = shortOutput;
-			}
+			private const string ADSetHelp = "Set the current audio playback device to the provided value. Asterisks can be used as wildcards.";
+			[Option('b', "SetAudioDevice", HelpText = ADSetHelp, SetName = ADSetName)]
+			public string SetAudioDevice { get; set; }
 		}
 
 		#endregion
 
 		#region Functionality
 
-		private static IEnumerable<Result> ProcessOptions ( Options options )
+		private static IList<Result> ProcessOptions ( Options options )
 		{
 			var results = new List<Result>();
 
 			var ret = ProcessRefreshRateOptions(options);
+			results.AddRange(ret);
+
+			ret = ProcessAudioDeviceOptions(options);
 			results.AddRange(ret);
 
 			return results;
@@ -99,7 +95,7 @@
 
 		private static Lazy<DisplayController> DisplayController = new Lazy<DisplayController>();
 
-		private static IEnumerable<Result> ProcessRefreshRateOptions ( Options options )
+		private static IList<Result> ProcessRefreshRateOptions ( Options options )
 		{
 			var results = new List<Result>();
 
@@ -112,7 +108,7 @@
 			return results;
 		}
 
-		private static IEnumerable<Result> ProcessToggleRefreshRate ( Options options )
+		private static IList<Result> ProcessToggleRefreshRate ( Options options )
 		{
 			var results = new List<Result>();
 
@@ -131,28 +127,30 @@
 				{
 					results.Add(new Result(
 						false,
-						"Toggling refresh rate to next value in set " + string.Join(", ", options.ToggleRefreshRate.Select(rr => rr.ToString()))
+						"Toggling refresh rate to next value in set " + string.Join(", ", options.ToggleRefreshRate.Select(rr => rr.ToString()) + " Hz"),
+						"Toggling refresh rate"
 					));
 
-					//TODO: Handle output
-					DisplayController.Value.ToggleRefreshRate();
+					var ret = DisplayController.Value.ToggleRefreshRate();
+					results.Add(ret);
 				}
 				else
 				{
 					results.Add(new Result(
 						false,
-						"Toggling refresh rate to next supported value."
+						"Toggling refresh rate to next supported value.",
+						"Toggling refresh rate"
 					));
 
-					//TODO: Handle output
-					DisplayController.Value.ToggleRefreshRate();
+					var ret = DisplayController.Value.ToggleRefreshRate();
+					results.Add(ret);
 				}
 			}
 
 			return results;
 		}
 
-		private static IEnumerable<Result> ProcessSetRefreshRate ( Options options )
+		private static IList<Result> ProcessSetRefreshRate ( Options options )
 		{
 			var results = new List<Result>();
 
@@ -160,11 +158,12 @@
 			{
 				results.Add(new Result(
 					false,
-					"Setting refresh rate to " + options.SetRefreshRate
+					"Setting refresh rate to " + options.SetRefreshRate + " Hz",
+					"Refresh Rate: " + options.SetRefreshRate + " Hz"
 				));
 
-				//TODO: Handle output
-				DisplayController.Value.SetRefreshRate(options.SetRefreshRate.Value);
+				var ret = DisplayController.Value.SetRefreshRate(options.SetRefreshRate.Value);
+				results.Add(ret);
 			}
 
 			return results;
@@ -172,42 +171,77 @@
 
 		#endregion
 
+		#region Audio Device
+
+		private static IList<Result> ProcessAudioDeviceOptions ( Options options )
+		{
+			var results = new List<Result>();
+
+			var ret = ProcessToggleAudioDevice(options);
+			results.AddRange(ret);
+
+			ret = ProcessSetAudioDevice(options);
+			results.AddRange(ret);
+
+			return results;
+		}
+
+		private static IList<Result> ProcessToggleAudioDevice ( Options options )
+		{
+			var results = new List<Result>();
+
+			//MMDeviceEnumerator DevEnum = new MMDeviceEnumerator();
+			//MMDeviceCollection devices = DevEnum.EnumerateAudioEndPoints(EDataFlow.eRender, EDeviceState.DEVICE_STATE_ACTIVE);
+			//MMDevice DefaultDevice = DevEnum.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia);
+
+			////Find current device
+			//int index = -1;
+			//for ( int i = 0; i < devices.Count; ++i )
+			//{
+			//	if ( devices[i].ID == DefaultDevice.ID )
+			//	{
+			//		index = i;
+			//		break;
+			//	}
+			//}
+
+			////Increment device
+			//index = (index + 1) % devices.Count;
+
+			////Set device
+			//PolicyConfigClient client = new PolicyConfigClient();
+			//client.SetDefaultEndpoint(devices[index].ID, ERole.eMultimedia);
+
+			return results;
+		}
+
+		private static IList<Result> ProcessSetAudioDevice ( Options options )
+		{
+			var results = new List<Result>();
+
+			//int index = 0;
+
+			//if ( !string.IsNullOrEmpty(options.SetAudioDevice) )
+			//{
+			//	MMDeviceEnumerator DevEnum = new MMDeviceEnumerator();
+			//	MMDeviceCollection devices = DevEnum.EnumerateAudioEndPoints(EDataFlow.eRender, EDeviceState.DEVICE_STATE_ACTIVE);
+
+			//	PolicyConfigClient client = new PolicyConfigClient();
+			//	client.SetDefaultEndpoint(devices[index].ID, ERole.eMultimedia);
+
+			//	results.Add(new Result(
+			//		false,
+			//		"Set audio device",
+			//		"Set audio device",
+			//		true
+			//	));
+			//}
+
+			return results;
+		}
+
 		#endregion
 
-		//TODO: Move notification handling to its own class
-		#region Notification
-		/*
-		private static NotifyIcon notification;
-
-		private static void ShowIcon ()
-		{
-			if ( notification == null )
-				notification = new NotifyIcon();
-
-			notification.BalloonTipIcon = ToolTipIcon.Info;
-			notification.BalloonTipText = "This is a NotifyIcon";
-			notification.BalloonTipTitle = "NotifyIcon";
-			notification.Icon = Resources.Info;
-			notification.Visible = true;
-
-			notification.BalloonTipClosed += ( s, e ) => notification.Dispose();
-
-			notification.ShowBalloonTip(1000);
-
-			Thread thread = new Thread(new ThreadStart(() => {
-				Thread.Sleep(1000 + 8000);
-				notification.Dispose();
-			}));
-			thread.Start();
-			Console.WriteLine("Thread started");
-		}
-
-		private static void HideNotification ()
-		{
-			if ( notification != null )
-				notification.Visible = false;
-		}
-		*/
 		#endregion
 	}
 }

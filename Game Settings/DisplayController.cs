@@ -1,6 +1,8 @@
 ﻿namespace GameSettings
 {
 	using System.Collections.Generic;
+	using System.Linq;
+	using System.Runtime.InteropServices;
 
 	internal partial class DisplayController
 	{
@@ -8,9 +10,7 @@
 
 		public DisplayController ()
 		{
-			currentDisplaySettings = new User32.DEVMODE();
-			//TODO: Set size
-			//currentDisplaySettings.dmSize = sizeof(User32.DEVMODE);
+			currentDisplaySettings = ConstructDEVMODE();
 			User32.EnumDisplaySettings(null, User32.ENUM_CURRENT_SETTINGS, ref currentDisplaySettings);
 		}
 
@@ -22,7 +22,7 @@
 		public IList<int> GetSupportedRefreshRates ()
 		{
 			List<int> supportedRefreshRates = new List<int>();
-			User32.DEVMODE devmode = new User32.DEVMODE();
+			User32.DEVMODE devmode = ConstructDEVMODE();
 
 			int i = 0;
 			while ( User32.EnumDisplaySettings(null, i++, ref devmode) )
@@ -45,38 +45,88 @@
 			return supportedRefreshRates;
 		}
 
-		public void SetRefreshRate ( int refreshRate )
+		public Result SetRefreshRate ( int refreshRate )
 		{
-			if ( currentDisplaySettings.dmDisplayFrequency == refreshRate ) { return; }
-
+			User32.DISP_CHANGE dispResult = User32.DISP_CHANGE.Successful;
 			User32.DEVMODE devmode = currentDisplaySettings;
-			devmode.dmDisplayFrequency = refreshRate;
 
-			User32.DISP_CHANGE result = User32.ChangeDisplaySettings(ref devmode, User32.ChangeDisplaySettingsFlags.CDS_NONE);
+			if ( currentDisplaySettings.dmDisplayFrequency != refreshRate )
+			{
+				devmode.dmDisplayFrequency = refreshRate;
+				dispResult = User32.ChangeDisplaySettings(ref devmode, User32.ChangeDisplaySettingsFlags.CDS_NONE);
+			}
 
-			if ( result == User32.DISP_CHANGE.Successful )
+			Result result;
+			if ( dispResult == User32.DISP_CHANGE.Successful )
+			{
 				currentDisplaySettings = devmode;
+
+				result = new Result(
+					false,
+					"Set refresh rate to " + refreshRate + " Hz",
+					"Refresh Rate: " + refreshRate + " Hz",
+					true
+				);
+			}
+			else
+			{
+				result = new Result(
+					true,
+					"Error setting refresh rate to " + refreshRate + ": " + dispResult,
+					"Refresh Rate Error: " + dispResult
+				);
+			}
+
+			return result;
 		}
 
-		public void ToggleRefreshRate ()
+		public Result ToggleRefreshRate ( IList<int> refreshRates = null )
 		{
-			IList<int> supportedRefreshRates = GetSupportedRefreshRates();
+			if ( refreshRates == null )
+			{
+				refreshRates = GetSupportedRefreshRates();
 
-			//TODO: Dialog box?
-			if ( supportedRefreshRates.Count == 0 ) { return; }
-
-			//Determine the index of the current refresh rate so we can increment it
-			int currentRefreshRateIndex = supportedRefreshRates.IndexOf(currentDisplaySettings.dmDisplayFrequency);
+				if ( refreshRates.Count == 0 )
+				{
+					return new Result(
+						true,
+						"No supported refresh rates were found",
+						"No supported refresh rates"
+					);
+				}
+			}
+			else
+			{
+				if ( refreshRates.Count == 0 )
+				{
+					return new Result(
+						true,
+						"No refresh rates provided",
+						"No refresh rates provided"
+					);
+				}
+			}
 
 			//Increment the current refresh rate
-			currentRefreshRateIndex = (currentRefreshRateIndex + 1) % supportedRefreshRates.Count;
+			int currentRefreshRateIndex = refreshRates.IndexOf(currentDisplaySettings.dmDisplayFrequency);
+			currentRefreshRateIndex = (currentRefreshRateIndex + 1) % refreshRates.Count;
+			int refreshRate = refreshRates[currentRefreshRateIndex];
 
-			SetRefreshRate(supportedRefreshRates[currentRefreshRateIndex]);
+			//Set it
+			return SetRefreshRate(refreshRate);
 		}
 
 		#endregion
 
 		#region Utility Methods
+
+		private static User32.DEVMODE ConstructDEVMODE ()
+		{
+			var devmode = new User32.DEVMODE();
+			devmode.dmSize = (short) Marshal.SizeOf(typeof(User32.DEVMODE));
+
+			return devmode;
+		}
 
 		private static Resolution GetCurrentResolution ()
 		{
