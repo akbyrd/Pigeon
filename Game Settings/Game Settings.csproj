@@ -40,7 +40,6 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AudioController.cs" />
     <Compile Include="DisplayController.cs" />
     <Compile Include="Notification.cs" />
     <Compile Include="Program.cs" />
@@ -73,7 +72,7 @@
       <Project>{9f1076aa-63df-4128-9c10-fd65e425c783}</Project>
       <Name>CoreAudioApi</Name>
     </ProjectReference>
-    <ProjectReference Include="..\commandline\src\CommandLine\CommandLine.csproj">
+    <ProjectReference Include="..\modules\commandline\src\CommandLine\CommandLine.csproj">
       <Project>{e1bd3c65-49c3-49e7-baba-c60980cb3f20}</Project>
       <Name>CommandLine</Name>
     </ProjectReference>
