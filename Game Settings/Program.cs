@@ -4,10 +4,13 @@
 	using System.Collections.Generic;
 	using System.Linq;
 	using CommandLine;
-	//using CoreAudioApi;
+	using CoreAudioApi;
 
+	//TODO: Can't see refresh rate set in NVidia control panel
+	//TODO: Can't distinguish between 59 and 60 Hz. (int truncation + really 59.9 Hz?)
 	//TODO: Add Audio Device support
 	//TODO: Implement proper notification
+	//TODO: Not showing usage if options are empty?
 
 	internal class Program
 	{
@@ -57,7 +60,7 @@
 
 			private const string RRSetName = "Refresh";
 			private const string RRToggleHelp = "Cycles through provided refresh rates at the current resolution. If none are provided, cycles through all supported refresh rates at the current resolution.";
-			[Option('r', "ToggleRefreshRate", Min = 0, DefaultValue = null, HelpText = RRToggleHelp, SetName = RRSetName)]
+			[Option('r', "ToggleRefreshRate", DefaultValue = null, Min = 0, HelpText = RRToggleHelp, SetName = RRSetName)]
 			public IEnumerable<int> ToggleRefreshRate { get; set; }
 
 			private const string RRSetHelp = "Set refresh rate to the provided value. The current resolution is maintained.";
@@ -66,7 +69,7 @@
 
 			private const string ADSetName = "AudioDevice";
 			private const string ADToggleHelp = "Cycles through provided audio playback devices. If none are provided, cycles through all enabled playback devices.";
-			[Option('a', "ToggleAudioDevice", Min = 0, DefaultValue = null, HelpText = ADToggleHelp, SetName = ADSetName)]
+			[Option('a', "ToggleAudioDevice", DefaultValue = null, Min = 0, HelpText = ADToggleHelp, SetName = ADSetName)]
 			public IEnumerable<string> ToggleAudioDevice { get; set; }
 
 			private const string ADSetHelp = "Set the current audio playback device to the provided value. Asterisks can be used as wildcards.";
@@ -127,11 +130,12 @@
 				{
 					results.Add(new Result(
 						false,
-						"Toggling refresh rate to next value in set " + string.Join(", ", options.ToggleRefreshRate.Select(rr => rr.ToString()) + " Hz"),
+						"Toggling refresh rate to next value in set " + string.Join(", ", options.ToggleRefreshRate.Select(rr => rr.ToString() + " Hz")),
 						"Toggling refresh rate"
 					));
 
-					var ret = DisplayController.Value.ToggleRefreshRate();
+					var refreshRates = options.ToggleRefreshRate.ToList();
+					var ret = DisplayController.Value.ToggleRefreshRate(refreshRates);
 					results.Add(ret);
 				}
 				else
@@ -173,6 +177,8 @@
 
 		#region Audio Device
 
+		private static Lazy<AudioController> AudioController = new Lazy<AudioController>();
+
 		private static IList<Result> ProcessAudioDeviceOptions ( Options options )
 		{
 			var results = new List<Result>();
@@ -190,27 +196,37 @@
 		{
 			var results = new List<Result>();
 
-			//MMDeviceEnumerator DevEnum = new MMDeviceEnumerator();
-			//MMDeviceCollection devices = DevEnum.EnumerateAudioEndPoints(EDataFlow.eRender, EDeviceState.DEVICE_STATE_ACTIVE);
-			//MMDevice DefaultDevice = DevEnum.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia);
+			if ( options.ToggleAudioDevice != null )
+			{
+				int audioDeviceCount = options.ToggleAudioDevice.Count();
+				if ( audioDeviceCount == 1 )
+				{
+					results.Add(new Result(
+						true,
+						"Toggling audio device requires either 0 or >1 values.",
+						"Invalid args"
+					));
+				}
+				else if ( audioDeviceCount > 1 )
+				{
+					results.Add(new Result(
+						true,
+						"Toggling a set of audio devices is not yet implemented.",
+						"Not implemented"
+					));
+				}
+				else
+				{
+					results.Add(new Result(
+						false,
+						"Toggling audio device to next supported value",
+						"Toggling audio device"
+					));
 
-			////Find current device
-			//int index = -1;
-			//for ( int i = 0; i < devices.Count; ++i )
-			//{
-			//	if ( devices[i].ID == DefaultDevice.ID )
-			//	{
-			//		index = i;
-			//		break;
-			//	}
-			//}
-
-			////Increment device
-			//index = (index + 1) % devices.Count;
-
-			////Set device
-			//PolicyConfigClient client = new PolicyConfigClient();
-			//client.SetDefaultEndpoint(devices[index].ID, ERole.eMultimedia);
+					var ret = AudioController.Value.ToggleAudioDevice();
+					results.Add(ret);
+				}
+			}
 
 			return results;
 		}
@@ -219,23 +235,23 @@
 		{
 			var results = new List<Result>();
 
-			//int index = 0;
+			int index = 0;
 
-			//if ( !string.IsNullOrEmpty(options.SetAudioDevice) )
-			//{
-			//	MMDeviceEnumerator DevEnum = new MMDeviceEnumerator();
-			//	MMDeviceCollection devices = DevEnum.EnumerateAudioEndPoints(EDataFlow.eRender, EDeviceState.DEVICE_STATE_ACTIVE);
+			if ( !string.IsNullOrEmpty(options.SetAudioDevice) )
+			{
+				MMDeviceEnumerator DevEnum = new MMDeviceEnumerator();
+				MMDeviceCollection devices = DevEnum.EnumerateAudioEndPoints(EDataFlow.eRender, EDeviceState.DEVICE_STATE_ACTIVE);
 
-			//	PolicyConfigClient client = new PolicyConfigClient();
-			//	client.SetDefaultEndpoint(devices[index].ID, ERole.eMultimedia);
+				PolicyConfigClient client = new PolicyConfigClient();
+				client.SetDefaultEndpoint(devices[index].ID, ERole.eMultimedia);
 
-			//	results.Add(new Result(
-			//		false,
-			//		"Set audio device",
-			//		"Set audio device",
-			//		true
-			//	));
-			//}
+				results.Add(new Result(
+					false,
+					"Set audio device",
+					"Set audio device",
+					true
+				));
+			}
 
 			return results;
 		}
