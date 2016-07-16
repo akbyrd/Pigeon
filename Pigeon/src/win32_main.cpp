@@ -44,12 +44,14 @@ DebugPrint(c16 const* format, ...)
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
-	int success;
+	b32 success;
 	HRESULT hr;
 
 	//TODO: Detect other instances, close them
-	//TODO: Play sound on change
 	//TODO: Display notification on change
+	//TODO: Custom sound?
+	//TODO: Audio devices are cycled in reverse
+	//TODO: Shift to open to the relevant settings window
 	//TODO: Integrate volume ducking?
 	//https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
 	//TODO: Log failures

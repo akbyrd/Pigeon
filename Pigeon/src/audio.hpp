@@ -92,6 +92,8 @@ CycleDefaultAudioDevice()
 
 	//Set next audio device
 	{
+		b32 success;
+
 		CComPtr<IPolicyConfig> policyConfig;
 		hr = CoCreateInstance(CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policyConfig));
 		if (FAILED(hr)) return false;
@@ -101,6 +103,9 @@ CycleDefaultAudioDevice()
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
 		if (FAILED(hr)) return false;
+
+		success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
+		if (!success) return false;
 	}
 
 	return true;
