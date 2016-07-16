@@ -64,7 +64,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	success = RegisterHotKey(nullptr, toggleAudioDeviceHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F5);
 	if (!success) goto Cleanup;
 
-	const int toggleRefreshRateHotkeyID = 0;
+	const int toggleRefreshRateHotkeyID = 1;
 	success = RegisterHotKey(nullptr, toggleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
 	if (!success) goto Cleanup;
 
@@ -78,11 +78,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{
 			case WM_HOTKEY:
 			{
-				if (msg.wParam == toggleAudioDeviceHotkeyID)
-					CycleDefaultAudioDevice();
+				switch (msg.wParam)
+				{
+					case toggleAudioDeviceHotkeyID:
+						CycleDefaultAudioDevice();
+						break;
 
-				if (msg.wParam == toggleRefreshRateHotkeyID)
-					CycleRefreshRate();
+					case toggleRefreshRateHotkeyID:
+						CycleRefreshRate();
+						break;
+				}
 
 				break;
 			}
