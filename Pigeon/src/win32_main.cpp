@@ -59,7 +59,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	//TODO: Auto-detect headset being turned on/off
 	//TODO: Command line usage
 
-	hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY);
+	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr)) return false;
 
 	const int toggleAudioDeviceHotkeyID = 0;
