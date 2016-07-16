@@ -47,11 +47,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	int success;
 	HRESULT hr;
 
+	//TODO: Detect other instances, close them
+	//TODO: Play sound on change
+	//TODO: Display notification on change
 	//TODO: Integrate volume ducking?
 	//https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-	//TODO: Play sound on switch?
-	//TODO: Icon
-	//TODO: Detect other instances, close them
 	//TODO: Log failures
 	//TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	//TODO: Auto-detect headset being turned on/off
@@ -77,7 +77,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		switch (msg.message)
 		{
 			case WM_HOTKEY:
-			{
 				switch (msg.wParam)
 				{
 					case toggleAudioDeviceHotkeyID:
@@ -88,9 +87,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						CycleRefreshRate();
 						break;
 				}
-
 				break;
-			}
 
 			default:
 				DebugPrint(L"Unexpected message: %d", msg.message);
