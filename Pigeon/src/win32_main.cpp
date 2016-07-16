@@ -62,12 +62,15 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr)) return false;
 
-	const int toggleAudioDeviceHotkeyID = 0;
-	success = RegisterHotKey(nullptr, toggleAudioDeviceHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F5);
+	const int cycleAudioDeviceHotkeyID = 0;
+	success = RegisterHotKey(nullptr, cycleAudioDeviceHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F5);
 	if (!success) goto Cleanup;
 
-	const int toggleRefreshRateHotkeyID = 1;
-	success = RegisterHotKey(nullptr, toggleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
+	const int cycleRefreshRateHotkeyID = 1;
+	success = RegisterHotKey(nullptr, cycleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
+	if (!success) goto Cleanup;
+
+	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 	if (!success) goto Cleanup;
 
 	MSG msg;
@@ -81,11 +84,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			case WM_HOTKEY:
 				switch (msg.wParam)
 				{
-					case toggleAudioDeviceHotkeyID:
+					case cycleAudioDeviceHotkeyID:
 						CycleDefaultAudioDevice();
 						break;
 
-					case toggleRefreshRateHotkeyID:
+					case cycleRefreshRateHotkeyID:
 						CycleRefreshRate();
 						break;
 				}
