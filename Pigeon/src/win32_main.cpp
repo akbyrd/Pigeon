@@ -41,13 +41,17 @@ DebugPrint(c16 const* format, ...)
 #include "audio.hpp"
 #include "video.hpp"
 
+static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
+
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
 	b32 success;
 	HRESULT hr;
+	u32 result;
+	MSG msg = {};
 
-	//TODO: Detect other instances, close them
+
 	//TODO: Display notification on change
 	//TODO: Custom sound?
 	//TODO: Audio devices are cycled in reverse
@@ -58,6 +62,22 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	//TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	//TODO: Auto-detect headset being turned on/off
 	//TODO: Command line usage
+	//TODO: Test with mutliple users. Might need to name the event in Local\
+
+	//NOTE: Handles are closed when process terminates.
+	//Events are destroyed when the last handle is destroyed.
+	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
+	if (!singleInstanceEvent) return false;
+	
+	if (GetLastError() == ERROR_ALREADY_EXISTS)
+	{
+		success = SetEvent(singleInstanceEvent);
+		if (!success) return false;
+	
+		result = WaitForSingleObject(singleInstanceEvent, 1000);
+		if (result == WAIT_TIMEOUT) return false;
+		if (result == WAIT_FAILED ) return false;
+	}
 
 	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr)) return false;
@@ -73,34 +93,53 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 	if (!success) goto Cleanup;
 
-	MSG msg;
-	while (GetMessageW(&msg, nullptr, 0, 0))
+	bool quit = false;
+	while (!quit)
 	{
-		TranslateMessage(&msg);
-		DispatchMessageW(&msg);
+		//TODO: I'm unsure if this releases on ALL possible messages
+		result = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
+		if (result == WAIT_OBJECT_0) PostQuitMessage(0);
+		if (result == WAIT_FAILED  ) PostQuitMessage(1);
 
-		switch (msg.message)
+		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
-			case WM_HOTKEY:
-				switch (msg.wParam)
-				{
-					case cycleAudioDeviceHotkeyID:
-						CycleDefaultAudioDevice();
-						break;
+			TranslateMessage(&msg);
+			DispatchMessageW(&msg);
 
-					case cycleRefreshRateHotkeyID:
-						CycleRefreshRate();
-						break;
-				}
-				break;
+			switch (msg.message)
+			{
+				case WM_HOTKEY:
+					switch (msg.wParam)
+					{
+						case cycleAudioDeviceHotkeyID:
+							CycleDefaultAudioDevice();
+							break;
 
-			default:
-				DebugPrint(L"Unexpected message: %d", msg.message);
+						case cycleRefreshRateHotkeyID:
+							CycleRefreshRate();
+							break;
+					}
+					break;
+
+				case WM_QUIT:
+					quit = true;
+					break;
+
+				default:
+					DebugPrint(L"Unexpected message: %d", msg.message);
+			}
 		}
 	}
 
-	Cleanup:
+Cleanup:
 	CoUninitialize();
 
-	return 0;
+	//TODO: These may be unnecessary, but I don't know what guarantees Windows
+	//makes about when SetEvent will cause waiting threads to release.
+	UnregisterHotKey(nullptr, cycleRefreshRateHotkeyID);
+	UnregisterHotKey(nullptr, cycleAudioDeviceHotkeyID);
+	SetEvent(singleInstanceEvent);
+
+	//TODO: This is wrong
+	return LOWORD(msg.wParam);
 }
