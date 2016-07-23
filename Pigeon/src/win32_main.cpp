@@ -52,12 +52,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
-	//TODO: Display notification on change
-	//TODO: Custom sound?
-	//TODO: Audio devices are cycled in reverse
+	//TODO: Sound doesn't play on most devices
 	//TODO: Shift to open to the relevant settings window
+	//TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
+	//TODO: Custom sound?
 	//TODO: Integrate volume ducking?
 	//https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
+	//TODO: Display notification on change
 	//TODO: Log failures
 	//TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	//TODO: Auto-detect headset being turned on/off

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mmdeviceapi.h>
+//#include <Functiondiscoverykeys_devpkey.h>
 const IID    IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 
@@ -53,23 +54,6 @@ CycleDefaultAudioDevice()
 			hr = device->GetId(&deviceID);
 			if (FAILED(hr)) continue;
 
-			if (useNextDevice)
-			{
-				newDefaultDeviceID = deviceID;
-				break;
-			}
-
-			if (wcscmp(deviceID, currentDefaultDeviceID) == 0)
-			{
-				useNextDevice = true;
-				continue;
-			}
-
-			if (!newDefaultDeviceID)
-			{
-				newDefaultDeviceID = deviceID;
-			}
-
 			#if false
 			CComPtr<IPropertyStore> propertyStore;
 			hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
@@ -86,6 +70,23 @@ CycleDefaultAudioDevice()
 			hr = PropVariantClear(&friendlyName);
 			if (FAILED(hr)) continue;
 			#endif
+
+			if (useNextDevice)
+			{
+				newDefaultDeviceID = deviceID;
+				break;
+			}
+
+			if (wcscmp(deviceID, currentDefaultDeviceID) == 0)
+			{
+				useNextDevice = true;
+				continue;
+			}
+
+			if (!newDefaultDeviceID)
+			{
+				newDefaultDeviceID = deviceID;
+			}
 		}
 	}
 
