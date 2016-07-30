@@ -111,3 +111,26 @@ CycleDefaultAudioDevice()
 
 	return true;
 }
+
+void
+OpenAudioPlaybackDevices()
+{
+	c8 commandLine[MAX_PATH + 256] = "\"";
+	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
+	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return;
+
+	//NOTE: Path does not end with a backslash unless the
+	//system directory is the root directory
+	if (commandLine[endIndex-1] != '\\')
+		commandLine[endIndex++] = '\\';
+
+	c8 canonicalSoundPath[] = "control.exe\" /name Microsoft.Sound";
+	u16 totalSize = endIndex + ArrayCount(canonicalSoundPath);
+	if (totalSize > ArrayCount(commandLine)) return;
+
+	for (u16 i = 0; i < ArrayCount(canonicalSoundPath); ++i)
+		commandLine[endIndex++] = canonicalSoundPath[i];
+
+	u32 result = WinExec(commandLine, SW_NORMAL);
+	if ( result < 32 ) return;
+}

@@ -52,17 +52,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
-	//TODO: Sound doesn't play on most devices when cycling audio devices
 	//TODO: Shift to open to the relevant settings window
+	//TODO: Display notification on change
+	//TODO: Sound doesn't play on most devices when cycling audio devices
 	//TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
 	//TODO: Custom sound?
 	//TODO: Integrate volume ducking?
 	//https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-	//TODO: Display notification on change
 	//TODO: Log failures
 	//TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	//TODO: Auto-detect headset being turned on/off
-	//TODO: Command line usage
 	//TODO: Test with mutliple users. Might need use Local\ namespace for the event
 	//TODO: Solve IPolicyConfig GUID issue
 
@@ -88,9 +87,17 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	success = RegisterHotKey(nullptr, cycleAudioDeviceHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F5);
 	if (!success) goto Cleanup;
 
-	const int cycleRefreshRateHotkeyID = 1;
+	const int openPlaybackDevicesHotkeyID = 1;
+	success = RegisterHotKey(nullptr, openPlaybackDevicesHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F5);
+	if (!success) goto Cleanup;
+
+	const int cycleRefreshRateHotkeyID = 2;
 	success = RegisterHotKey(nullptr, cycleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
 	if (!success) goto Cleanup;
+
+	//const int openDisplayPropertiesHotkeyID = 3;
+	//success = RegisterHotKey(nullptr, openDisplayPropertiesHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F6);
+	//if (!success) goto Cleanup;
 
 	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 	if (!success) goto Cleanup;
@@ -117,9 +124,18 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							CycleDefaultAudioDevice();
 							break;
 
+						case openPlaybackDevicesHotkeyID:
+							OpenAudioPlaybackDevices();
+							break;
+
 						case cycleRefreshRateHotkeyID:
 							CycleRefreshRate();
 							break;
+
+						//Device properties, Monitor tab (second)
+						//case openDisplayPropertiesHotkeyID:
+						//	OpenDisplayProperties();
+						//	break;
 					}
 					break;
 
@@ -137,7 +153,8 @@ Cleanup:
 	CoUninitialize();
 
 	//TODO: These may be unnecessary, but I don't know what guarantees Windows
-	//makes about when SetEvent will cause waiting threads to release.
+	//makes about when SetEvent will cause waiting threads to release. If the
+	//release happens immediately, the hotkeys need to be unregistered first.
 	UnregisterHotKey(nullptr, cycleRefreshRateHotkeyID);
 	UnregisterHotKey(nullptr, cycleAudioDeviceHotkeyID);
 	SetEvent(singleInstanceEvent);
