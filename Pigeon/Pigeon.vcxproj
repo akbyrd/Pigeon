@@ -101,7 +101,7 @@
     <ResourceCompile Include="res\Pigeon.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\Info.ico" />
+    <Image Include="res\Icon.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
