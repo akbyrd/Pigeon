@@ -132,5 +132,5 @@ OpenAudioPlaybackDevices()
 		commandLine[endIndex++] = canonicalSoundPath[i];
 
 	u32 result = WinExec(commandLine, SW_NORMAL);
-	if ( result < 32 ) return;
+	if (result < 32) return;
 }

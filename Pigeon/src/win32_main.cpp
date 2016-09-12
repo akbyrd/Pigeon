@@ -63,7 +63,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	//TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	//TODO: Auto-detect headset being turned on/off
 	//TODO: Test with mutliple users. Might need use Local\ namespace for the event
-	//TODO: Solve IPolicyConfig GUID issue
 
 	//NOTE: Handles are closed when process terminates.
 	//Events are destroyed when the last handle is destroyed.
