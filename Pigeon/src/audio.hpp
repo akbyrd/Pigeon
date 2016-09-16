@@ -93,8 +93,6 @@ CycleDefaultAudioDevice()
 
 	//Set next audio device
 	{
-		b32 success;
-
 		CComPtr<IPolicyConfig> policyConfig;
 		hr = CoCreateInstance(CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policyConfig));
 		if (FAILED(hr)) return false;
@@ -105,19 +103,19 @@ CycleDefaultAudioDevice()
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
 		if (FAILED(hr)) return false;
 
-		success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
+		b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
 		if (!success) return false;
 	}
 
 	return true;
 }
 
-void
-OpenAudioPlaybackDevices()
+inline bool
+OpenAudioPlaybackDevicesWindow()
 {
 	c8 commandLine[MAX_PATH + 256] = "\"";
 	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
-	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return;
+	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return false;
 
 	//NOTE: Path does not end with a backslash unless the
 	//system directory is the root directory
@@ -126,11 +124,13 @@ OpenAudioPlaybackDevices()
 
 	c8 canonicalSoundPath[] = "control.exe\" /name Microsoft.Sound";
 	u16 totalSize = endIndex + ArrayCount(canonicalSoundPath);
-	if (totalSize > ArrayCount(commandLine)) return;
+	if (totalSize > ArrayCount(commandLine)) return false;
 
 	for (u16 i = 0; i < ArrayCount(canonicalSoundPath); ++i)
 		commandLine[endIndex++] = canonicalSoundPath[i];
 
 	u32 result = WinExec(commandLine, SW_NORMAL);
-	if (result < 32) return;
+	if (result < 32) return false;
+
+	return true;
 }

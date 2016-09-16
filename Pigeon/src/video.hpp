@@ -16,15 +16,12 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 inline bool
 CycleRefreshRate()
 {
-	b32 success;
-
-
 	//Get current display settings
 	DEVMODEW currentDisplaySettings = {};
 	{
 		currentDisplaySettings.dmSize = sizeof(currentDisplaySettings);
 
-		success = EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &currentDisplaySettings);
+		b32 success = EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &currentDisplaySettings);
 		if (!success) return false;
 	}
 
@@ -68,13 +65,36 @@ CycleRefreshRate()
 
 	//Set the next display settings
 	{
-		LONG result;
-
 		newDisplaySettings.dmFields = DM_DISPLAYFREQUENCY;
 
-		result = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
+		LONG result = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
 		if (result < 0) return false;
 	}
+
+	return true;
+}
+
+inline bool
+OpenDisplayAdapterSettingsWindow()
+{
+	c8 commandLine[MAX_PATH + 256] = "\"";
+	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
+	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return false;
+
+	//NOTE: Path does not end with a backslash unless the
+	//system directory is the root directory
+	if (commandLine[endIndex-1] != '\\')
+		commandLine[endIndex++] = '\\';
+
+	c8 adapterSettingsCommand[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
+	u16 totalSize = endIndex + ArrayCount(adapterSettingsCommand);
+	if (totalSize > ArrayCount(commandLine)) return false;
+
+	for (u16 i = 0; i < ArrayCount(adapterSettingsCommand); ++i)
+		commandLine[endIndex++] = adapterSettingsCommand[i];
+
+	u32 result = WinExec(commandLine, SW_NORMAL);
+	if (result < 32) return false;
 
 	return true;
 }

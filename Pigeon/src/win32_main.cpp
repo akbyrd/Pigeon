@@ -1,47 +1,14 @@
 #include <Windows.h>
 #include <atlbase.h>
 
-#include <cstdint>
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-typedef int8_t  i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-
-typedef float  f32;
-typedef double f64;
-
-typedef char    c8;
-typedef wchar_t c16;
-
-typedef int b32;
-
-typedef size_t index;
-
-#define ArrayCount(x) sizeof(x) / sizeof(x[0])
-
-#include <cstdio>
-inline void
-DebugPrint(c16 const* format, ...)
-{
-	int result;
-
-	va_list args;
-	va_start (args, format);
-	c16 buffer[128];
-	result = _vsnwprintf_s(buffer, ArrayCount(buffer), _TRUNCATE, format, args);
-	OutputDebugStringW(buffer);
-	va_end (args);
-}
-
+#include "shared.hpp"
 #include "audio.hpp"
 #include "video.hpp"
 
+//TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
+
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
@@ -52,8 +19,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
+	//TODO: Display notification on change (built-in? custom?)
 	//TODO: Shift to open to the relevant settings window
-	//TODO: Display notification on change
+	//      %systemroot%\system32\rundll32.exe display.dll,ShowAdapterSettings
+	//      Starts on first tab (Adapter)
+	//      Run as child process, send commands to the window to change the tab?
 	//TODO: Sound doesn't play on most devices when cycling audio devices
 	//TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
 	//TODO: Custom sound?
@@ -94,10 +64,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	success = RegisterHotKey(nullptr, cycleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
 	if (!success) goto Cleanup;
 
-	//const int openDisplayPropertiesHotkeyID = 3;
-	//success = RegisterHotKey(nullptr, openDisplayPropertiesHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F6);
-	//if (!success) goto Cleanup;
+	const int openDisplayAdapterSettingsHotkeyID = 3;
+	success = RegisterHotKey(nullptr, openDisplayAdapterSettingsHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F6);
+	if (!success) goto Cleanup;
 
+	//TODO: BELOW_NORMAL_PRIORITY_CLASS?
 	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 	if (!success) goto Cleanup;
 
@@ -124,17 +95,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							break;
 
 						case openPlaybackDevicesHotkeyID:
-							OpenAudioPlaybackDevices();
+							OpenAudioPlaybackDevicesWindow();
 							break;
 
 						case cycleRefreshRateHotkeyID:
 							CycleRefreshRate();
 							break;
 
-						//Device properties, Monitor tab (second)
-						//case openDisplayPropertiesHotkeyID:
-						//	OpenDisplayProperties();
-						//	break;
+						case openDisplayAdapterSettingsHotkeyID:
+							OpenDisplayAdapterSettingsWindow();
+							break;
 					}
 					break;
 
@@ -160,4 +130,10 @@ Cleanup:
 
 	//TODO: This is wrong
 	return LOWORD(msg.wParam);
+}
+
+inline LRESULT CALLBACK
+WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	return 0;
 }
