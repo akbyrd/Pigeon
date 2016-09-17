@@ -12,11 +12,11 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 		&& lhs->dmDisplayOrientation == rhs->dmDisplayOrientation;
 }
 
-//NOTE: CoInitialize is assumed to have been called.
+// NOTE: CoInitialize is assumed to have been called.
 inline bool
 CycleRefreshRate()
 {
-	//Get current display settings
+	// Get current display settings
 	DEVMODEW currentDisplaySettings = {};
 	{
 		currentDisplaySettings.dmSize = sizeof(currentDisplaySettings);
@@ -26,7 +26,7 @@ CycleRefreshRate()
 	}
 
 
-	//Find the next available display settings
+	// Find the next available display settings
 	DEVMODEW newDisplaySettings = {};
 	{
 		newDisplaySettings.dmSize = sizeof(newDisplaySettings);
@@ -36,7 +36,7 @@ CycleRefreshRate()
 
 		bool foundDesiredFrequency = false;
 
-		//TODO: Check all failure modes
+		// TODO: Check all failure modes
 		int i = 0;
 		while (EnumDisplaySettingsExW(nullptr, i++, &displaySettings, EDS_RAWMODE))
 		{
@@ -52,18 +52,18 @@ CycleRefreshRate()
 
 				if (displaySettings.dmDisplayFrequency == currentDisplaySettings.dmDisplayFrequency)
 				{
-					//Set desired frequency again next time around.
+					// Set desired frequency again next time around.
 					foundDesiredFrequency = false;
 				}
 			}
 		}
 
-		//This can occur e.g. when the display has only one desirable frequency.
+		// This can occur e.g. when the display has only one desirable frequency.
 		if (!foundDesiredFrequency) return false;
 	}
 
 
-	//Set the next display settings
+	// Set the next display settings
 	{
 		newDisplaySettings.dmFields = DM_DISPLAYFREQUENCY;
 
