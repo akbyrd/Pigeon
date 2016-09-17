@@ -81,7 +81,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		if (classAtom == INVALID_ATOM) goto Cleanup;
 
 		hwnd = CreateWindowExW(
-			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE, //TODO: WS_EX_TRANSPARENT?
+			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, // TODO: WS_EX_COMPOSITED?
 			windowClass.lpszClassName,
 			L"Pigeon Notification Window",
 			WS_POPUP,
@@ -95,7 +95,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		if (hwnd == INVALID_HANDLE_VALUE) goto Cleanup;
 
 		// TODO: UpdateLayeredWindow
-		success = SetLayeredWindowAttributes(hwnd, {}, 242, LWA_ALPHA);
+		success = SetLayeredWindowAttributes(hwnd, CLR_NONE, 242, LWA_ALPHA);
 		if (!success) goto Cleanup;
 
 		// DEBUG: Show
@@ -218,6 +218,7 @@ WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			b32 success;
 
 
+			// TODO: Test for flickering. (Disable Aero?)
 			// Prep
 			PAINTSTRUCT paintStruct = {};
 			HDC deviceContext = BeginPaint(hwnd, &paintStruct);
