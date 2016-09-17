@@ -1,7 +1,7 @@
 #include <Windows.h>
-//#include <Uxtheme.h>
-//#pragma comment(lib, "UxTheme.lib")
-//#include <Vssym32.h>
+#include <Uxtheme.h>
+#pragma comment(lib, "UxTheme.lib")
+#include <Vssym32.h>
 //TODO: Switch to WRL ComPtr
 #include <atlbase.h> //CComPtr
 
@@ -9,9 +9,13 @@
 #include "audio.hpp"
 #include "video.hpp"
 
-//#pragma comment(linker,"\"/manifestdependency:type='win32' \
-//name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-//processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+//#pragma comment(linker,                                  \
+//                "\"/manifestdependency:type='win32'      \
+//                name='Microsoft.Windows.Common-Controls' \
+//                version='6.0.0.0'                        \
+//                processorArchitecture='*'                \
+//                publicKeyToken='6595b64144ccf1df'        \
+//                language='*'\""                          )
 
 // TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
@@ -60,7 +64,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Window
 	HWND hwnd = {};
-	if (false)
 	{
 		WNDCLASSW windowClass = {};
 		windowClass.style         = 0;//CS_DROPSHADOW;
@@ -69,42 +72,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		windowClass.cbWndExtra    = 0;
 		windowClass.hInstance     = hInstance;
 		windowClass.hIcon         = nullptr;
-		windowClass.hCursor       = 0; //TODO
-		windowClass.hbrBackground = CreateSolidBrush(RGB(16, 16, 16)); //TODO
+		windowClass.hCursor       = 0; //TODO: Don't affect cursor state
+		windowClass.hbrBackground = nullptr;
 		windowClass.lpszMenuName  = nullptr;
 		windowClass.lpszClassName = L"Pigeon Notification Class";
-
-
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_SCROLLBAR); //Gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_BACKGROUND); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_ACTIVECAPTION); //Light blue-gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_INACTIVECAPTION); //Light blue-gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_MENU); //Off white
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_WINDOW); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_WINDOWFRAME); //Gray 100
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_MENUTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_WINDOWTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_CAPTIONTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_ACTIVEBORDER); //Light gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_INACTIVEBORDER); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_APPWORKSPACE); //Light gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_HIGHLIGHT); //Light blue
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_HIGHLIGHTTEXT); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_BTNFACE); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_BTNSHADOW); //Light gray
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_GRAYTEXT); //Gray 109
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_BTNTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_INACTIVECAPTIONTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_BTNHIGHLIGHT); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_3DDKSHADOW); //Gray 105!
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_3DLIGHT); //White
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_INFOTEXT); //Black
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_INFOBK); //Yellow-ish white
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_HOTLIGHT); //Medium blue
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_GRADIENTACTIVECAPTION); //Bluish white
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_GRADIENTINACTIVECAPTION); //Lighter bluish white
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_MENUHILIGHT); //Light blue
-		//windowClass.hbrBackground = GetSysColorBrush(COLOR_MENUBAR); //Very light gray
 
 		ATOM classAtom = RegisterClassW(&windowClass);
 		if (classAtom == INVALID_ATOM) goto Cleanup;
@@ -114,8 +85,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			windowClass.lpszClassName,
 			L"Pigeon Notification Window",
 			WS_POPUP,
-			50, 60, //TODO
-			200, 60, //TODO
+			50, 60, //TODO: Get this from the theme?
+			200, 60,
 			nullptr,
 			nullptr,
 			hInstance,
@@ -123,17 +94,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		);
 		if (hwnd == INVALID_HANDLE_VALUE) goto Cleanup;
 
+		// TODO: UpdateLayeredWindow
 		success = SetLayeredWindowAttributes(hwnd, {}, 242, LWA_ALPHA);
 		if (!success) goto Cleanup;
 
-		//DEBUG: Show
+		// DEBUG: Show
 		success = ShowWindow(hwnd, nCmdShow);
-
-		//OpenThemeData(hwnd, L"TRAYNOTIFY");
-		//HTHEME theme = OpenThemeData(hwnd, L"FLYOUT");
-		//if (theme != INVALID_HANDLE_VALUE)
-		//{
-		//}
 	}
 
 
@@ -158,6 +124,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 	if (!success) goto Cleanup;
 
+
+	// Message pump
 	bool quit = false;
 	while (!quit)
 	{
@@ -198,8 +166,15 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					quit = true;
 					break;
 
+				case WM_PAINT:
+				// TODO: Why am I getting timer messages?
+				case WM_TIMER:
+				// TODO: Disable mouse messages?
+				case WM_MOUSEMOVE:
+					break;
+
 				default:
-					DebugPrint(L"Unexpected message: %d", msg.message);
+					DebugPrint(L"Unexpected message: %d\n", msg.message);
 			}
 		}
 	}
@@ -210,8 +185,10 @@ Cleanup:
 	// TODO: These may be unnecessary, but I don't know what guarantees Windows
 	// makes about when SetEvent will cause waiting threads to release. If the
 	// release happens immediately, the hotkeys need to be unregistered first.
-	UnregisterHotKey(nullptr, cycleRefreshRateHotkeyID);
 	UnregisterHotKey(nullptr, cycleAudioDeviceHotkeyID);
+	UnregisterHotKey(nullptr, openPlaybackDevicesHotkeyID);
+	UnregisterHotKey(nullptr, cycleRefreshRateHotkeyID);
+	UnregisterHotKey(nullptr, openDisplayAdapterSettingsHotkeyID);
 	SetEvent(singleInstanceEvent);
 
 	// Leak all the things!
@@ -228,30 +205,93 @@ WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		case WM_CREATE:
 		case WM_DESTROY:
-		case WM_ERASEBKGND:
 			break;
+
+		case WM_ERASEBKGND:
+			// TODO: Who the shit is drawing the background?
+			return 1;
 
 		case WM_PAINT:
 		{
-			RECT rc = {};
-			GetClientRect(hwnd, &rc);
+			// TODO: Handle errors
+			i32 result;
+			b32 success;
 
-			HFONT hFont = CreateFontW(22, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, 0, 0, 0, 0, 0, L"Segoe UI");
 
-			PAINTSTRUCT ps = {};
-			HDC hdc = BeginPaint(hwnd, &ps);
+			// Prep
+			PAINTSTRUCT paintStruct = {};
+			HDC deviceContext = BeginPaint(hwnd, &paintStruct);
+			if (deviceContext == nullptr) break;
+
+			// TODO: Ensure string isn't empty
+			c16 text[] = L"SteelSeries H Wireless";
+			u16 minWidth = 200;
+			u16 maxWidth = 300;
+			u16 hPadding = 20;
+
+
+			// Resize
+			RECT textSizeRect = {};
+			result = DrawTextW(deviceContext, text, -1, &textSizeRect, DT_CALCRECT | DT_SINGLELINE);
+			//if (result == 0) break;
+
+			u16 textWidth = textSizeRect.right - textSizeRect.left;
+
+			u16 windowWidth = textWidth + 2*hPadding;
+			if (windowWidth < minWidth) windowWidth = minWidth;
+			if (windowWidth > maxWidth) windowWidth = maxWidth;
+
+			RECT currentWindowRect = {};
+			success = GetWindowRect(hwnd, &currentWindowRect);
+			//if (!success) break;
+
+			RECT windowRect = currentWindowRect;
+			windowRect.right = windowRect.left + windowWidth;
+
+			if (!EqualRect(&windowRect, &currentWindowRect))
 			{
-				//FillRect(hdc, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
-
-				HGDIOBJ hof = SelectObject(hdc, hFont);
-				SetBkMode(hdc, TRANSPARENT);
-				SetTextColor(hdc, RGB(255, 255, 255));
-				DrawTextW(hdc, L"SteelSeries H Wireless", -1, &rc, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-				SelectObject(hdc, hof);
+				success = SetWindowPos(
+					hwnd,
+					nullptr,
+					windowRect.left,
+					windowRect.top,
+					windowRect.right - windowRect.left,
+					windowRect.bottom - windowRect.top,
+					SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
+				);
+				//if (!success) break;
 			}
-			EndPaint(hwnd, &ps);
 
-			return 0;;
+
+			// Background
+			COLORREF backgroundColor = RGB(16, 16, 16);
+
+
+			// Text
+			RECT textRect = windowRect;
+			textRect.left   = hPadding;
+			textRect.top    = 0;
+			textRect.right  = textRect.left + windowWidth - 2*hPadding;
+			textRect.bottom = windowRect.bottom - windowRect.top;
+
+			// TODO: Get an appropriate (theme?) font
+			result = SetBkMode(deviceContext, TRANSPARENT);
+			//if (result == 0) break;
+
+			COLORREF prevColor = {};
+			prevColor = SetTextColor(deviceContext, RGB(255, 255, 255));
+			//if (prevColor == CLR_INVALID) break;
+
+			//if (SetTextColor(deviceContext, RGB(255, 255, 255))
+			//	== CLR_INVALID) break;
+
+			u32 textFormat = DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS;
+			result = DrawTextW(deviceContext, text, -1, &textRect, textFormat);
+			//if (result == 0) break;
+
+			EndPaint(hwnd, &paintStruct);
+
+			return 0;
 		}
 	}
 
