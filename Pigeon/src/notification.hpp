@@ -26,6 +26,7 @@ struct Notification
 	f64       animShowTicks     = 0;
 	f64       animIdleTicks     = 0;
 	f64       animHideTicks     = 0;
+	u16       animUpdateMS      = 0;
 	f64       tickFrequency     = 0;
 
 	u16       windowMinWidth    = 0;
@@ -49,8 +50,6 @@ struct Notification
 
 	HFONT     previousFont      = nullptr;
 	HBITMAP   previousBitmap    = nullptr;
-
-	f64 appStartTimeMS = 0;
 };
 
 void
@@ -67,6 +66,8 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 
 	if (isNewHigherPriority || hasOldBeenSeen)
 	{
+		LogEvent(Event::Notification);
+
 		state->isDirty = true;
 		state->error = error;
 		state->text = text;
@@ -170,9 +171,7 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 
 		// Animate
 		LARGE_INTEGER currentTicksRaw = {};
-		success = QueryPerformanceCounter(&currentTicksRaw);
-		// TODO: Warning
-		// GetLastError()
+		QueryPerformanceCounter(&currentTicksRaw);
 
 		f64 currentTicks = (f64) currentTicksRaw.QuadPart;
 
@@ -199,7 +198,7 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 				state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
 
 				// TODO: This will overshoot by an amount based on the animation step duration
-				uResult = SetTimer(state->hwnd, state->timerID, 33, nullptr);
+				uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
 				//if (result == 0)
 				// TODO: Error
 				// GetLastError
@@ -217,7 +216,7 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 				//TODO: Error
 
 				// TODO: This will overshoot by an amount based on the animation step duration
-				uResult = SetTimer(state->hwnd, state->timerID, 33, nullptr);
+				uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
 				//if (result == 0)
 				// TODO: Error
 				// GetLastError
@@ -238,6 +237,8 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 LRESULT CALLBACK
 NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	//LogEvent(Event::UpdateStart);
+
 	b32 success;
 	u64 uResult;
 
@@ -268,8 +269,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 					LARGE_INTEGER currentTicksRaw = {};
 					success = QueryPerformanceCounter(&currentTicksRaw);
-					// TODO: Warning
-					// GetLastError()
 
 					f64 currentTicks = (f64) currentTicksRaw.QuadPart;
 					f64 animTicks = currentTicks - notification->animStartTick;
@@ -285,6 +284,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								// TODO: Do we want something other than linear?
 								newAlpha = (f32) (animTicks / notification->animShowTicks);
+								LogEvent(currentTicks, Event::Showing);
 							}
 							else
 							{
@@ -306,11 +306,13 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								// TODO: This is happening more than it should
 								newAlpha = 1;
 
-								u32 remainingMS = (u32) ((notification->animIdleTicks - animTicks) / notification->tickFrequency) * 1000;
+								u32 remainingMS = (u32) ((notification->animIdleTicks - animTicks) / notification->tickFrequency * 1000.);
 								uResult = SetTimer(hwnd, notification->timerID, remainingMS, nullptr);
 								//if (result == 0)
 								// TODO: Error
 								// GetLastError
+
+								LogEvent(currentTicks, Event::Shown);
 							}
 							else
 							{
@@ -318,6 +320,12 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 								notification->animState = AnimState::Hiding;
 								notification->animStartTick = currentTicks - overshootTicks;
+
+								// TODO: Formalize state changes
+								uResult = SetTimer(hwnd, notification->timerID, notification->animUpdateMS, nullptr);
+								//if (result == 0)
+								// TODO: Error
+								// GetLastError
 
 								changed = true;
 								continue;
@@ -334,6 +342,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								// TODO: Do we want something other than linear?
 								newAlpha = (f32) (1. - animTicks / notification->animHideTicks);
+								LogEvent(currentTicks, Event::Hiding);
 							}
 							else
 							{
@@ -341,6 +350,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 								notification->animState = AnimState::Hidden;
 								notification->animStartTick = currentTicks - overshootTicks;
+								PrintLog();
 
 								changed = true;
 								continue;
@@ -394,11 +404,15 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						notification->isDirty = !success;
 					}
 				}
+
+				//LogEvent(Event::UpdateEnd);
 				return 0;
 			}
 			break;
 		}
 	}
 
-	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+	auto def = DefWindowProcW(hwnd, uMsg, wParam, lParam);
+	//LogEvent(Event::UpdateEnd);
+	return def;
 }
