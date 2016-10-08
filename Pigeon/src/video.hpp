@@ -1,5 +1,3 @@
-#pragma once
-
 inline bool
 AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 {

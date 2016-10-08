@@ -1,9 +1,6 @@
-#pragma once
-
 #include <mmdeviceapi.h>
-//#include <Functiondiscoverykeys_devpkey.h>
-const IID    IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
-const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
+#include <playsoundapi.h>
+#include <Functiondiscoverykeys_devpkey.h>
 
 #include "IPolicyConfig.h"
 
@@ -16,7 +13,7 @@ CycleDefaultAudioDevice(Notification* notification)
 
 	//Shared
 	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
-	hr = CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	if (FAILED(hr)) return false;
 
 
@@ -34,8 +31,8 @@ CycleDefaultAudioDevice(Notification* notification)
 
 	//Find next available audio device
 	CComHeapPtr<c16> newDefaultDeviceID;
-	{
 	CComPtr<IMMDeviceCollection> deviceCollection;
+	{
 		hr = deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &deviceCollection);
 		if (FAILED(hr)) return false;
 

@@ -9,14 +9,6 @@
 #include "audio.hpp"
 #include "video.hpp"
 
-//#pragma comment(linker,                                  \
-//                "\"/manifestdependency:type='win32'      \
-//                name='Microsoft.Windows.Common-Controls' \
-//                version='6.0.0.0'                        \
-//                processorArchitecture='*'                \
-//                publicKeyToken='6595b64144ccf1df'        \
-//                language='*'\""                          )
-
 // TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 
