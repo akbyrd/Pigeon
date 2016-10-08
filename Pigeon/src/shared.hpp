@@ -19,18 +19,5 @@ typedef int b32;
 
 typedef size_t index;
 
+#define Assert(x) {if (!(x)) *((u8*) 0) = 0;}
 #define ArrayCount(x) sizeof(x) / sizeof(x[0])
-
-#include <cstdio>
-inline void
-DebugPrint(c16 const* format, ...)
-{
-	int result;
-
-	va_list args;
-	va_start (args, format);
-	c16 buffer[128];
-	result = _vsnwprintf_s(buffer, ArrayCount(buffer), _TRUNCATE, format, args);
-	OutputDebugStringW(buffer);
-	va_end (args);
-}

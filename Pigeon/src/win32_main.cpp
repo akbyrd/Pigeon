@@ -1,11 +1,11 @@
+#define WIN32_LEAN_AND_MEAN
+// TODO: #include <minwindef.h>?
 #include <Windows.h>
-#include <Uxtheme.h>
-#pragma comment(lib, "UxTheme.lib")
-#include <Vssym32.h>
-//TODO: Switch to WRL ComPtr
+// TODO: Switch to WRL ComPtr
 #include <atlbase.h> //CComPtr
 
 #include "shared.hpp"
+#include "notification.hpp"
 #include "audio.hpp"
 #include "video.hpp"
 
@@ -20,25 +20,27 @@
 // TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
 	b32 success;
-	u32 result;
+	u32 uResult;
+	i32 iResult;
 	HRESULT hr;
 	MSG msg = {};
 
 
-	// TODO: Display notification on change (built-in? custom?)
+	// TODO: Pigeon image on startup
+	// TODO: Pigeon sounds
+	// TODO: SetProcessDPIAware?
+	// TODO: Log failures
+	// Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
+
 	// TODO: Hotkey to restart
 	// TODO: Sound doesn't play on most devices when cycling audio devices
 	// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
-	// TODO: Custom sound?
 	// TODO: Integrate volume ducking?
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-	// TODO: Log failures
 	// TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	// TODO: Auto-detect headset being turned on/off
 	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
@@ -52,27 +54,138 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	{
 		success = SetEvent(singleInstanceEvent);
 		if (!success) return false;
-	
-		result = WaitForSingleObject(singleInstanceEvent, 1000);
-		if (result == WAIT_TIMEOUT) return false;
-		if (result == WAIT_FAILED ) return false;
+
+		uResult = WaitForSingleObject(singleInstanceEvent, 1000);
+		if (uResult == WAIT_TIMEOUT) return false;
+		if (uResult == WAIT_FAILED ) return false;
 	}
 
 	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr)) return false;
 
 
+	// Notification Settings
+	LARGE_INTEGER tickFrequency = {};
+	success = QueryPerformanceFrequency(&tickFrequency);
+	// TODO: Error
+	// GetLastError()
+
+	f64 tickFrequencyF64 = (f64) tickFrequency.QuadPart;
+
+	Notification notification = {};
+	notification.windowMinWidth    = 200; //TODO: Implement
+	notification.windowMaxWidth    = 600; //TODO: Implement
+	notification.windowSize        = {200, 60};
+	notification.windowPosition    = { 50, 60};
+	notification.backgroundColor   = RGBA(16, 16, 16, 242);
+	notification.textColorNormal   = RGB(255, 255, 255);
+	notification.textColorError    = RGB(255, 0, 0);
+	notification.textColorWarning  = RGB(255, 255, 0);
+	notification.textPadding       = 20;
+	notification.animShowTicks     = 1.0 * tickFrequencyF64;
+	notification.animIdleTicks     = 2.0 * tickFrequencyF64;
+	notification.animHideTicks     = 1.0 * tickFrequencyF64;
+	notification.timerID           = 1;
+	notification.tickFrequency     = tickFrequencyF64;
+
+	//DEBUG
+	LARGE_INTEGER appStartTicks;
+	QueryPerformanceFrequency(&appStartTicks);
+	notification.appStartTimeMS = (f64) appStartTicks.QuadPart / tickFrequencyF64 * 1000;
+
+
+	// GDI Resources
+	//TODO: Maybe do this in WM_CREATE and clean up in WM_DESTROY
+	{
+		// Bitmap
+		BITMAPINFO bitmapInfo = {};
+		bitmapInfo.bmiHeader.biSize          = sizeof(bitmapInfo.bmiHeader);
+		bitmapInfo.bmiHeader.biWidth         = 200; //TOOD: Use maxWidth
+		bitmapInfo.bmiHeader.biHeight        = notification.windowSize.cy;
+		bitmapInfo.bmiHeader.biPlanes        = 1;
+		bitmapInfo.bmiHeader.biBitCount      = 32;
+		bitmapInfo.bmiHeader.biCompression   = BI_RGB;
+		bitmapInfo.bmiHeader.biSizeImage     = 0;
+		bitmapInfo.bmiHeader.biXPelsPerMeter = 0; //TODO: ?
+		bitmapInfo.bmiHeader.biYPelsPerMeter = 0; //TODO: ?
+		bitmapInfo.bmiHeader.biClrUsed       = 0;
+		bitmapInfo.bmiHeader.biClrImportant  = 0;
+		//bitmapInfo.bmiColors                 = {}; //TODO: ?
+
+		notification.screenDC = GetDC(nullptr);
+		if (!notification.screenDC) goto Cleanup;
+
+		notification.bitmapDC = CreateCompatibleDC(notification.screenDC);
+		if (!notification.bitmapDC) goto Cleanup;
+
+		// TODO: Have to GdiFlush before using pixels
+		// https://msdn.microsoft.com/query/dev14.query?appId=Dev14IDEF1&l=EN-US&k=k(WINGDI%2FCreateDIBSection);k(CreateDIBSection);k(DevLang-C%2B%2B);k(TargetOS-Windows)&rd=true
+		notification.bitmap = CreateDIBSection(
+			notification.bitmapDC,
+			&bitmapInfo,
+			DIB_RGB_COLORS,
+			(void**) &notification.pixels,
+			nullptr,
+			0
+		);
+		if (!notification.pixels) goto Cleanup;
+
+		notification.previousBitmap = (HBITMAP) SelectObject(notification.bitmapDC, notification.bitmap);
+		if (!notification.previousBitmap) goto Cleanup;
+
+		// Font
+		NONCLIENTMETRICSW nonClientMetrics = {};
+		nonClientMetrics.cbSize = sizeof(nonClientMetrics);
+
+		// TODO: Is it worth moving this to a function to linearize the flow?
+		success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
+		if (success)
+		{
+			notification.font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
+			if (notification.font)
+			{
+				notification.previousFont = (HFONT) SelectObject(notification.bitmapDC, notification.font);
+				if (!notification.previousFont)
+				{
+					//TODO: Queue warning message
+					//GetLastError
+					//L"Failed to use created font."
+				}
+			}
+			else
+			{
+				//TODO: Queue warning message
+				//GetLastError
+				//L"Failed to create font."
+			}
+		}
+		else
+		{
+			//TODO: Queue warning message
+			//GetLastError
+			//L"Failed to obtain the current font."
+		}
+
+		iResult = SetBkMode(notification.bitmapDC, TRANSPARENT);
+		if (iResult == 0)
+		{
+			//TODO: Queue warning message
+			//GetLastError
+			//L"Failed to set transparent text background."
+		}
+	}
+
+
 	// Window
-	HWND hwnd = {};
 	{
 		WNDCLASSW windowClass = {};
-		windowClass.style         = 0;//CS_DROPSHADOW;
-		windowClass.lpfnWndProc   = WndProc;
+		windowClass.style         = 0; // TODO: CS_DROPSHADOW?
+		windowClass.lpfnWndProc   = NotificationWndProc;
 		windowClass.cbClsExtra    = 0;
-		windowClass.cbWndExtra    = 0;
+		windowClass.cbWndExtra    = sizeof(&notification);
 		windowClass.hInstance     = hInstance;
 		windowClass.hIcon         = nullptr;
-		windowClass.hCursor       = 0; //TODO: Don't affect cursor state
+		windowClass.hCursor       = nullptr;
 		windowClass.hbrBackground = nullptr;
 		windowClass.lpszMenuName  = nullptr;
 		windowClass.lpszClassName = L"Pigeon Notification Class";
@@ -80,26 +193,21 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		ATOM classAtom = RegisterClassW(&windowClass);
 		if (classAtom == INVALID_ATOM) goto Cleanup;
 
-		hwnd = CreateWindowExW(
-			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, // TODO: WS_EX_COMPOSITED?
+		notification.hwnd = CreateWindowExW(
+			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
 			windowClass.lpszClassName,
 			L"Pigeon Notification Window",
 			WS_POPUP,
-			50, 60, //TODO: Get this from the theme?
-			200, 60,
+			notification.windowPosition.x,
+			notification.windowPosition.y,
+			notification.windowSize.cx,
+			notification.windowSize.cy,
 			nullptr,
 			nullptr,
 			hInstance,
-			0
+			&notification
 		);
-		if (hwnd == INVALID_HANDLE_VALUE) goto Cleanup;
-
-		// TODO: UpdateLayeredWindow
-		success = SetLayeredWindowAttributes(hwnd, CLR_NONE, 242, LWA_ALPHA);
-		if (!success) goto Cleanup;
-
-		// DEBUG: Show
-		success = ShowWindow(hwnd, nCmdShow);
+		if (notification.hwnd == INVALID_HANDLE_VALUE) goto Cleanup;
 	}
 
 
@@ -125,14 +233,17 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	if (!success) goto Cleanup;
 
 
+	//DEBUG
+	Notify(&notification, L"Started!");
+
 	// Message pump
 	bool quit = false;
 	while (!quit)
 	{
 		//TODO: I'm unsure if this releases on ALL possible messages
-		result = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
-		if (result == WAIT_OBJECT_0) PostQuitMessage(0);
-		if (result == WAIT_FAILED  ) PostQuitMessage(1);
+		uResult = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
+		if (uResult == WAIT_OBJECT_0) PostQuitMessage(0);
+		if (uResult == WAIT_FAILED  ) PostQuitMessage(1);
 
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -142,10 +253,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			switch (msg.message)
 			{
 				case WM_HOTKEY:
+				{
 					switch (msg.wParam)
 					{
 						case cycleAudioDeviceHotkeyID:
-							CycleDefaultAudioDevice();
+							CycleDefaultAudioDevice(&notification);
 							break;
 
 						case openPlaybackDevicesHotkeyID:
@@ -161,25 +273,38 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							break;
 					}
 					break;
+				}
 
 				case WM_QUIT:
 					quit = true;
 					break;
 
-				case WM_PAINT:
-				// TODO: Why am I getting timer messages?
 				case WM_TIMER:
-				// TODO: Disable mouse messages?
-				case WM_MOUSEMOVE:
 					break;
 
+				// TODO: Disable key messages?
+				//       Somehow we're getting key messages, but only sometimes
+				case WM_KEYDOWN: //256
+				case WM_KEYUP: //257
+					//Fall through to default
+
 				default:
-					DebugPrint(L"Unexpected message: %d\n", msg.message);
+					Notify(&notification, L"Unexpected message: %d\n", Error::Warning);
 			}
 		}
 	}
 
 Cleanup:
+	//TODO: Do we even need to bother with this?
+	SelectObject(notification.bitmapDC, notification.previousFont);
+	DeleteObject(notification.font);
+
+	SelectObject(notification.bitmapDC, notification.previousBitmap);
+	DeleteObject(notification.bitmap);
+
+	DeleteDC(notification.bitmapDC);
+	ReleaseDC(nullptr, notification.screenDC);
+
 	CoUninitialize();
 
 	// TODO: These may be unnecessary, but I don't know what guarantees Windows
@@ -196,105 +321,4 @@ Cleanup:
 
 	// TODO: This is wrong
 	return LOWORD(msg.wParam);
-}
-
-inline LRESULT CALLBACK
-WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-	switch (uMsg)
-	{
-		case WM_CREATE:
-		case WM_DESTROY:
-			break;
-
-		case WM_ERASEBKGND:
-			// TODO: Who the shit is drawing the background?
-			return 1;
-
-		case WM_PAINT:
-		{
-			// TODO: Handle errors
-			i32 result;
-			b32 success;
-
-
-			// TODO: Test for flickering. (Disable Aero?)
-			// Prep
-			PAINTSTRUCT paintStruct = {};
-			HDC deviceContext = BeginPaint(hwnd, &paintStruct);
-			if (deviceContext == nullptr) break;
-
-			// TODO: Ensure string isn't empty
-			c16 text[] = L"SteelSeries H Wireless";
-			u16 minWidth = 200;
-			u16 maxWidth = 300;
-			u16 hPadding = 20;
-
-
-			// Resize
-			RECT textSizeRect = {};
-			result = DrawTextW(deviceContext, text, -1, &textSizeRect, DT_CALCRECT | DT_SINGLELINE);
-			//if (result == 0) break;
-
-			u16 textWidth = textSizeRect.right - textSizeRect.left;
-
-			u16 windowWidth = textWidth + 2*hPadding;
-			if (windowWidth < minWidth) windowWidth = minWidth;
-			if (windowWidth > maxWidth) windowWidth = maxWidth;
-
-			RECT currentWindowRect = {};
-			success = GetWindowRect(hwnd, &currentWindowRect);
-			//if (!success) break;
-
-			RECT windowRect = currentWindowRect;
-			windowRect.right = windowRect.left + windowWidth;
-
-			if (!EqualRect(&windowRect, &currentWindowRect))
-			{
-				success = SetWindowPos(
-					hwnd,
-					nullptr,
-					windowRect.left,
-					windowRect.top,
-					windowRect.right - windowRect.left,
-					windowRect.bottom - windowRect.top,
-					SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
-				);
-				//if (!success) break;
-			}
-
-
-			// Background
-			COLORREF backgroundColor = RGB(16, 16, 16);
-
-
-			// Text
-			RECT textRect = windowRect;
-			textRect.left   = hPadding;
-			textRect.top    = 0;
-			textRect.right  = textRect.left + windowWidth - 2*hPadding;
-			textRect.bottom = windowRect.bottom - windowRect.top;
-
-			// TODO: Get an appropriate (theme?) font
-			result = SetBkMode(deviceContext, TRANSPARENT);
-			//if (result == 0) break;
-
-			COLORREF prevColor = {};
-			prevColor = SetTextColor(deviceContext, RGB(255, 255, 255));
-			//if (prevColor == CLR_INVALID) break;
-
-			//if (SetTextColor(deviceContext, RGB(255, 255, 255))
-			//	== CLR_INVALID) break;
-
-			u32 textFormat = DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS;
-			result = DrawTextW(deviceContext, text, -1, &textRect, textFormat);
-			//if (result == 0) break;
-
-			EndPaint(hwnd, &paintStruct);
-
-			return 0;
-		}
-	}
-
-	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }

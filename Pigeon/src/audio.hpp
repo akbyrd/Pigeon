@@ -9,7 +9,7 @@ const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 
 // NOTE: CoInitialize is assumed to have been called.
 inline bool
-CycleDefaultAudioDevice()
+CycleDefaultAudioDevice(Notification* notification)
 {
 	HRESULT hr;
 
@@ -35,7 +35,7 @@ CycleDefaultAudioDevice()
 	//Find next available audio device
 	CComHeapPtr<c16> newDefaultDeviceID;
 	{
-		CComPtr<IMMDeviceCollection> deviceCollection;
+	CComPtr<IMMDeviceCollection> deviceCollection;
 		hr = deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &deviceCollection);
 		if (FAILED(hr)) return false;
 
@@ -54,23 +54,6 @@ CycleDefaultAudioDevice()
 			hr = device->GetId(&deviceID);
 			if (FAILED(hr)) continue;
 
-			#if false
-			CComPtr<IPropertyStore> propertyStore;
-			hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
-			if (FAILED(hr)) continue;
-
-			PROPVARIANT friendlyName;
-			PropVariantInit(&friendlyName);
-
-			hr = propertyStore->GetValue(PKEY_Device_FriendlyName, &friendlyName);
-			if (FAILED(hr)) continue;
-
-			DebugPrint(L"Device: %d: %ls\n", i, friendlyName.pwszVal);
-
-			hr = PropVariantClear(&friendlyName);
-			if (FAILED(hr)) continue;
-			#endif
-
 			if (useNextDevice)
 			{
 				newDefaultDeviceID = deviceID;
@@ -88,6 +71,29 @@ CycleDefaultAudioDevice()
 				newDefaultDeviceID = deviceID;
 			}
 		}
+	}
+
+
+	//Notification
+	{
+		CComPtr<IMMDevice> device;
+		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
+		if (FAILED(hr)) return false;
+
+		CComPtr<IPropertyStore> propertyStore;
+		hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
+		if (FAILED(hr)) return false;
+
+		PROPVARIANT deviceDescription;
+		PropVariantInit(&deviceDescription);
+
+		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
+		if (FAILED(hr)) return false;
+
+		Notify(notification, deviceDescription.pwszVal);
+
+		hr = PropVariantClear(&deviceDescription);
+		if (FAILED(hr)) return false;
 	}
 
 
