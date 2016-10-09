@@ -66,8 +66,6 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 
 	if (isNewHigherPriority || hasOldBeenSeen)
 	{
-		LogEvent(Event::Notification);
-
 		state->isDirty = true;
 		state->error = error;
 		state->text = text;
@@ -237,8 +235,6 @@ Notify(Notification* state, c16* text, Error error = Error::None)
 LRESULT CALLBACK
 NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	//LogEvent(Event::UpdateStart);
-
 	b32 success;
 	u64 uResult;
 
@@ -284,7 +280,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								// TODO: Do we want something other than linear?
 								newAlpha = (f32) (animTicks / notification->animShowTicks);
-								LogEvent(currentTicks, Event::Showing);
 							}
 							else
 							{
@@ -311,8 +306,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								//if (result == 0)
 								// TODO: Error
 								// GetLastError
-
-								LogEvent(currentTicks, Event::Shown);
 							}
 							else
 							{
@@ -342,7 +335,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								// TODO: Do we want something other than linear?
 								newAlpha = (f32) (1. - animTicks / notification->animHideTicks);
-								LogEvent(currentTicks, Event::Hiding);
 							}
 							else
 							{
@@ -350,7 +342,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 								notification->animState = AnimState::Hidden;
 								notification->animStartTick = currentTicks - overshootTicks;
-								PrintLog();
 
 								changed = true;
 								continue;
@@ -384,7 +375,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						BLENDFUNCTION blendFunction = {};
 						blendFunction.BlendOp             = AC_SRC_OVER;
 						blendFunction.BlendFlags          = 0;
-						blendFunction.SourceConstantAlpha = (u8) (255.f * newAlpha);
+						blendFunction.SourceConstantAlpha = (u8) (255.f*newAlpha + .5f);
 						blendFunction.AlphaFormat         = AC_SRC_ALPHA;
 
 						POINT zeroPoint = {0, 0};
@@ -405,14 +396,11 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					}
 				}
 
-				//LogEvent(Event::UpdateEnd);
 				return 0;
 			}
 			break;
 		}
 	}
 
-	auto def = DefWindowProcW(hwnd, uMsg, wParam, lParam);
-	//LogEvent(Event::UpdateEnd);
-	return def;
+	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }

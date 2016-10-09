@@ -22,7 +22,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
-	// TODO: Use a different animation timing method. SetTimer is not precise enough (appears to round to multiples of 10 or 15.6ms)
+	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon sounds
 	// TODO: SetProcessDPIAware?
@@ -74,8 +74,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	notification.textColorError    = RGB(255, 0, 0);
 	notification.textColorWarning  = RGB(255, 255, 0);
 	notification.textPadding       = 20;
-	notification.animShowTicks     = 1.0 * tickFrequencyF64;
-	notification.animIdleTicks     = 1.0 * tickFrequencyF64;
+	notification.animShowTicks     = 0.1 * tickFrequencyF64;
+	notification.animIdleTicks     = 2.0 * tickFrequencyF64;
 	notification.animHideTicks     = 1.0 * tickFrequencyF64;
 	notification.animUpdateMS      = 1000 / 30;
 	notification.timerID           = 1;
@@ -239,8 +239,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
-			//LogEvent(Event::MessagePump);
-
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 
