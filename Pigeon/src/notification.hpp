@@ -1,4 +1,5 @@
 #define RGBA(r, g, b, a) ((b << 0) | (g << 8) | (r << 16) | (a << 24))
+#define WM_PROCESSQUEUE WM_USER + 0
 
 enum struct AnimState
 {
@@ -17,8 +18,8 @@ enum struct Error
 
 struct Notification
 {
-	Error    error;
-	c16*     text;
+	Error error;
+	c16   text[256];
 };
 
 struct NotificationWindow
@@ -60,7 +61,7 @@ struct NotificationWindow
 	HBITMAP      previousBitmap    = nullptr;
 };
 
-b32 ProcessNotificationQueue(NotificationWindow* state);
+void ProcessNotificationQueue(NotificationWindow* state);
 u8 LogicalToActualIndex(NotificationWindow* state, u8 index); //TODO: Remove?
 
 void
@@ -76,7 +77,6 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 
 	// TODO: Error pigeon sound
 	// TODO: Line on notification indicating queue count (colored if warning/error exists?)
-
 
 	// Supercede existing non-error notifications
 	for (u8 i = 0; i < state->queueCount; i++)
@@ -112,21 +112,79 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 
 	// Queue
 	u8 nextIndex = LogicalToActualIndex(state, state->queueCount);
-	state->queue[nextIndex] = {error, text};
+	state->queue[nextIndex].error = error;
+	StrCpyW(state->queue[nextIndex].text, text);
 	state->queueCount++;
 
-	ProcessNotificationQueue(state);
+
+
+	if (state->queueCount == 1)
+	{
+		ProcessNotificationQueue(state);
+	}
+	else
+	{
+		b32 isCurrentUnimportant = state->queue[state->queueStart].error == Error::None;
+		b32 isCurrentHiding = state->animState == AnimState::Hiding || state->animState == AnimState::Hidden;
+
+		if (isCurrentUnimportant || isCurrentHiding)
+			ProcessNotificationQueue(state);
+	}
 }
 
-inline b32
+void
+NotifyFormat(NotificationWindow* notification, c16* text, u32 errorCode, Error error)
+{
+	c16 buffer[256] = {};
+	swprintf(buffer, ArrayCount(buffer), L"%s - Error: %d", text, errorCode);
+
+	Notify(notification, buffer, error);
+}
+
+void
+NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Error::Error, u32 errorCode = GetLastError())
+{
+	u32 uResult = 0;
+	i32 iResult = 0;
+
+	// TODO: Use vs_list?
+	c16 tempBuffer[128] = {};
+	uResult = FormatMessageW(
+		FORMAT_MESSAGE_FROM_SYSTEM,
+		nullptr,
+		errorCode,
+		0,
+		tempBuffer,
+		ArrayCount(tempBuffer),
+		nullptr
+	);
+	Assert(uResult > 0);
+
+	c16 errorText[256] = {};
+	iResult = swprintf(errorText, ArrayCount(errorText), L"%s - %s", text, tempBuffer);
+	Assert(iResult != 0);
+
+	Notify(notification, errorText, error);
+}
+
+inline u8
+LogicalToActualIndex(NotificationWindow* state, u8 index)
+{
+	Assert(index <= state->queueCount);
+
+	u8 result = (state->queueStart + index) & ArrayCount(state->queue);
+	return result;
+}
+
+inline void
 ProcessNotificationQueue(NotificationWindow* state)
 {
 	i32 iResult;
 	u64 uResult;
 	b32 success;
 
-	if (!state->isInitialized) return false;
-	if (state->queueCount == 0) return false;
+	if (!state->isInitialized) return;
+	if (state->queueCount == 0) return;
 
 	Notification* notification = &state->queue[state->queueStart];
 
@@ -168,7 +226,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 	// Background
 	for (u16 y = 0; y < state->windowSize.cy; y++)
 	{
-		u32* row = state->pixels + y*state->windowSize.cx;
+		u32* row = state->pixels + y*state->windowMaxWidth;
 		for (u16 x = 0; x < state->windowSize.cx; x++)
 		{
 			u32* pixel = row + x;
@@ -217,7 +275,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 	u32 fullA = RGBA(0, 0, 0, 255);
 	for (u16 y = 0; y < state->windowSize.cy; y++)
 	{
-		u32* row = state->pixels + y*state->windowSize.cx;
+		u32* row = state->pixels + y*state->windowMaxWidth;
 		for (u16 x = 0; x < state->windowSize.cx; x++)
 		{
 			u32* pixel = row + x;
@@ -290,7 +348,6 @@ ProcessNotificationQueue(NotificationWindow* state)
 	//TODO: Error
 
 	state->isDirty = true;
-	return true;
 }
 
 LRESULT CALLBACK
@@ -318,7 +375,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			// Bitmap
 			BITMAPINFO bitmapInfo = {};
 			bitmapInfo.bmiHeader.biSize          = sizeof(bitmapInfo.bmiHeader);
-			bitmapInfo.bmiHeader.biWidth         = 200; //TOOD: Use maxWidth
+			bitmapInfo.bmiHeader.biWidth         = state->windowMaxWidth;
 			bitmapInfo.bmiHeader.biHeight        = state->windowSize.cy;
 			bitmapInfo.bmiHeader.biPlanes        = 1;
 			bitmapInfo.bmiHeader.biBitCount      = 32;
@@ -347,6 +404,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				0
 			);
 			if (!state->pixels) return -1;
+			GdiFlush();
 
 			state->previousBitmap = (HBITMAP) SelectObject(state->bitmapDC, state->bitmap);
 			if (!state->previousBitmap) return -1;
@@ -393,6 +451,8 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			}
 
 			state->isInitialized = true;
+			success = PostMessageW(hwnd, WM_PROCESSQUEUE, 0, 0);
+			Assert(success);
 
 			return 0;
 		}
@@ -415,6 +475,10 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 			return 0;
 		}
+
+		case WM_PROCESSQUEUE:
+			ProcessNotificationQueue(state);
+			return 0;
 
 		case WM_TIMER:
 		{
@@ -497,6 +561,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							//Auto-show next notification
 							b32 isNotificationPending = state->queueCount > 1;
 							b32 allowNextNote = animTicks > .3f * state->animHideTicks;
+							allowNextNote &= state->queue[state->queueStart].error != Error::Error;
 
 							if (allowNextNote && isNotificationPending)
 							{
@@ -530,7 +595,15 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						case AnimState::Hidden:
 						{
-							Assert(state->queueCount == 1);
+							if (state->queue[state->queueStart].error == Error::Error)
+							{
+								PostQuitMessage(2);
+							}
+							else
+							{
+								Assert(state->queueCount == 1);
+							}
+
 							state->queueStart = 0;
 							state->queueCount = 0;
 
@@ -583,13 +656,4 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
-}
-
-inline u8
-LogicalToActualIndex(NotificationWindow* state, u8 index)
-{
-	Assert(index <= state->queueCount);
-
-	u8 result = (state->queueStart + index) & ArrayCount(state->queue);
-	return result;
 }

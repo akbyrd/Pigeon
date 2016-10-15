@@ -11,13 +11,13 @@
 
 // TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
+static const u32 UxdDisplayChangeMessage = 0xC22D;
 
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
 	b32 success;
 	u32 uResult;
-	i32 iResult;
 	HRESULT hr;
 	MSG msg = {};
 
@@ -38,23 +38,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// TODO: Auto-detect headset being turned on/off
 	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
 
+
 	// NOTE: Handles are closed when process terminates.
 	// Events are destroyed when the last handle is destroyed.
-	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
-	if (!singleInstanceEvent) return false;
-
-	if (GetLastError() == ERROR_ALREADY_EXISTS)
-	{
-		success = SetEvent(singleInstanceEvent);
-		if (!success) return false;
-
-		uResult = WaitForSingleObject(singleInstanceEvent, 1000);
-		if (uResult == WAIT_TIMEOUT) return false;
-		if (uResult == WAIT_FAILED ) return false;
-	}
-
-	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-	if (FAILED(hr)) return false;
 
 
 	// Notification
@@ -82,10 +68,26 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		notification.timerID           = 1;
 		notification.tickFrequency     = tickFrequencyF64;
 
-		// TODO: Queue. Ensure notification is ready
-		//if (notification.animUpdateMS < USER_TIMER_MINIMUM)
-		//	Notify(&notification, L"Animation update time is less than allowed minimum.", Error::Warning);
+		//DEBUG
+		Notify(&notification, L"Started!");
 	}
+
+	// Single Instance
+	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
+	if (!singleInstanceEvent) NotifyWindowsError(&notification, L"CreateEventW failed");
+
+	if (GetLastError() == ERROR_ALREADY_EXISTS)
+	{
+		success = SetEvent(singleInstanceEvent);
+		if (!success) NotifyWindowsError(&notification, L"SetEvent failed");
+
+		uResult = WaitForSingleObject(singleInstanceEvent, 1000);
+		if (uResult == WAIT_TIMEOUT) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_TIMEOUT");
+		if (uResult == WAIT_FAILED ) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
+	}
+
+	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
 
 
 	// Window
@@ -103,7 +105,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		if (classAtom == INVALID_ATOM) goto Cleanup;
+		if (classAtom == INVALID_ATOM) NotifyWindowsError(&notification, L"RegisterClassW failed");
 
 		notification.hwnd = CreateWindowExW(
 			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
@@ -119,34 +121,40 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			hInstance,
 			&notification
 		);
-		if (notification.hwnd == INVALID_HANDLE_VALUE) goto Cleanup;
+		if (notification.hwnd == INVALID_HANDLE_VALUE) NotifyWindowsError(&notification, L"CreateWindowExW failed");
 	}
 
 
 	// Hotkeys
-	const int cycleAudioDeviceHotkeyID = 0;
-	success = RegisterHotKey(nullptr, cycleAudioDeviceHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F5);
-	if (!success) goto Cleanup;
+	const i32           cycleAudioDeviceHotkeyID = 0;
+	const i32        openPlaybackDevicesHotkeyID = 1;
+	const i32           cycleRefreshRateHotkeyID = 2;
+	const i32 openDisplayAdapterSettingsHotkeyID = 3;
+	{
+		struct Hotkey
+		{
+			i32 id;
+			u32 modifier;
+			u32 key;
+		};
 
-	const int openPlaybackDevicesHotkeyID = 1;
-	success = RegisterHotKey(nullptr, openPlaybackDevicesHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F5);
-	if (!success) goto Cleanup;
+		Hotkey hotkeys[] = {
+			{           cycleAudioDeviceHotkeyID,           0, VK_F5 },
+			{        openPlaybackDevicesHotkeyID, MOD_CONTROL, VK_F5 },
+			{           cycleRefreshRateHotkeyID,           0, VK_F6 },
+			{ openDisplayAdapterSettingsHotkeyID, MOD_CONTROL, VK_F6 }
+		};
 
-	const int cycleRefreshRateHotkeyID = 2;
-	success = RegisterHotKey(nullptr, cycleRefreshRateHotkeyID, MOD_WIN | MOD_NOREPEAT, VK_F6);
-	if (!success) goto Cleanup;
-
-	const int openDisplayAdapterSettingsHotkeyID = 3;
-	success = RegisterHotKey(nullptr, openDisplayAdapterSettingsHotkeyID, MOD_CONTROL | MOD_WIN | MOD_NOREPEAT, VK_F6);
-	if (!success) goto Cleanup;
+		for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+		{
+			success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
+			if (!success) NotifyFormat(&notification, L"RegisterHotKey failed", hotkeys[i].id, Error::Warning);
+		}
+	}
 
 	// TODO: BELOW_NORMAL_PRIORITY_CLASS?
 	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
-	if (!success) goto Cleanup;
-
-
-	//DEBUG
-	Notify(&notification, L"Started!");
+	if (!success) NotifyWindowsError(&notification, L"CreateWindowExW failed", Error::Warning);
 
 
 	// Message pump
@@ -156,7 +164,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		//TODO: I'm unsure if this releases on ALL possible messages
 		uResult = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
 		if (uResult == WAIT_OBJECT_0) PostQuitMessage(0);
-		if (uResult == WAIT_FAILED  ) PostQuitMessage(1);
+		if (uResult == WAIT_FAILED  ) Notify(&notification, L"MsgWaitForMultipleObjects WAIT_FAILED", Error::Error);
 
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -192,10 +200,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					quit = true;
 					break;
 
-				#define UxdDisplayChangeMessage 0xC22D
-
 				// Expected messages
 				case WM_TIMER:
+				case WM_PROCESSQUEUE:
 				case UxdDisplayChangeMessage:
 					break;
 
@@ -206,14 +213,15 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					//Fall through to default
 
 				default:
-					c16 buffer[256] = {};
-					swprintf(buffer, L"Unexpected message: %d\n", msg.message);
+					c16 buffer[128] = {};
+					swprintf(buffer, ArrayCount(buffer), L"Unexpected message: %d\n", msg.message);
 					Notify(&notification, buffer, Error::Warning);
 			}
 		}
 	}
 
-Cleanup:
+
+	//Cleanup
 	CoUninitialize();
 
 	// TODO: These may be unnecessary, but I don't know what guarantees Windows
