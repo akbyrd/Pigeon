@@ -17,219 +17,280 @@ enum struct Error
 
 struct Notification
 {
-	Error     error             = Error::None;
-	c16*      text              = nullptr;
-	b32       isDirty           = false;
-
-	AnimState animState         = AnimState::Hidden;
-	f64       animStartTick     = 0;
-	f64       animShowTicks     = 0;
-	f64       animIdleTicks     = 0;
-	f64       animHideTicks     = 0;
-	u16       animUpdateMS      = 0;
-	f64       tickFrequency     = 0;
-
-	u16       windowMinWidth    = 0;
-	u16       windowMaxWidth    = 0;
-	SIZE      windowSize        = {};
-	POINT     windowPosition    = {};
-
-	COLORREF  backgroundColor   = {};
-	COLORREF  textColorNormal   = {};
-	COLORREF  textColorError    = {};
-	COLORREF  textColorWarning  = {};
-	u8        textPadding       = 0;
-
-	HWND      hwnd              = nullptr;
-	HDC       screenDC          = nullptr;
-	HDC       bitmapDC          = nullptr;
-	HFONT     font              = nullptr;
-	HBITMAP   bitmap            = nullptr;
-	u32*      pixels            = nullptr;
-	u64       timerID           = 0;
-
-	HFONT     previousFont      = nullptr;
-	HBITMAP   previousBitmap    = nullptr;
+	Error    error;
+	c16*     text;
 };
 
+struct NotificationWindow
+{
+	Notification queue[3]          = {};
+	u8           queueStart        = 0;
+	u8           queueCount        = 0;
+
+	b32          isDirty           = false;
+	AnimState    animState         = AnimState::Hidden;
+	f64          animStartTick     = 0;
+	f64          animShowTicks     = 0;
+	f64          animIdleTicks     = 0;
+	f64          animHideTicks     = 0;
+	u16          animUpdateMS      = 0;
+	f64          tickFrequency     = 0;
+
+	u16          windowMinWidth    = 0;
+	u16          windowMaxWidth    = 0;
+	SIZE         windowSize        = {};
+	POINT        windowPosition    = {};
+
+	COLORREF     backgroundColor   = {};
+	COLORREF     textColorNormal   = {};
+	COLORREF     textColorError    = {};
+	COLORREF     textColorWarning  = {};
+	u8           textPadding       = 0;
+
+	b32          isInitialized     = false;
+	HWND         hwnd              = nullptr;
+	HDC          screenDC          = nullptr;
+	HDC          bitmapDC          = nullptr;
+	HFONT        font              = nullptr;
+	HBITMAP      bitmap            = nullptr;
+	u32*         pixels            = nullptr;
+	u64          timerID           = 0;
+
+	HFONT        previousFont      = nullptr;
+	HBITMAP      previousBitmap    = nullptr;
+};
+
+b32 ProcessNotificationQueue(NotificationWindow* state);
+u8 LogicalToActualIndex(NotificationWindow* state, u8 index); //TODO: Remove?
+
 void
-Notify(Notification* state, c16* text, Error error = Error::None)
+Notify(NotificationWindow* state, c16* text, Error error = Error::None)
+{
+	// TODO: Currently a resolution notification will overwrite
+	// a sound notification. Is this the desired design?
+
+	// TODO: Maybe have a loop iteration counter in the main pump and
+	// use it to prevent infinite notifications from failures?
+
+	// TODO: Sort out naming convention. i.e. Notification vs Message
+
+	// TODO: Error pigeon sound
+	// TODO: Line on notification indicating queue count (colored if warning/error exists?)
+
+
+	// Supercede existing non-error notifications
+	for (u8 i = 0; i < state->queueCount; i++)
+	{
+		u8 actualIndex = LogicalToActualIndex(state, i);
+		if (state->queue[actualIndex].error == Error::None)
+		{
+			for (u8 j = i; j < state->queueCount-1; j++)
+			{
+				u8 actualIndex = LogicalToActualIndex(state, j);
+				u8 nextIndex = LogicalToActualIndex(state, j+1);
+				state->queue[actualIndex] = state->queue[nextIndex];
+			}
+
+			state->queueCount--;
+			break;
+		}
+	}
+
+
+	// Overflow
+	u8 maxQueueCount = ArrayCount(state->queue) - 1;
+	if (state->queueCount == maxQueueCount)
+	{
+		error = Error::Warning;
+		text  = L"Queue is overflowing";
+	}
+	else if (state->queueCount > maxQueueCount)
+	{
+		Assert(state->queueCount == ArrayCount(state->queue));
+		return;
+	}
+
+	// Queue
+	u8 nextIndex = LogicalToActualIndex(state, state->queueCount);
+	state->queue[nextIndex] = {error, text};
+	state->queueCount++;
+
+	ProcessNotificationQueue(state);
+}
+
+inline b32
+ProcessNotificationQueue(NotificationWindow* state)
 {
 	i32 iResult;
 	u64 uResult;
 	b32 success;
 
-	// TODO: Queue notifications?
-	// TODO: Handle this better so we can Notify errors from within this function
-	b32 isNewHigherPriority = state->error == Error::None || error > state->error;
-	b32 hasOldBeenSeen = state->animState == AnimState::Hiding || state->animState == AnimState::Hidden;
+	if (!state->isInitialized) return false;
+	if (state->queueCount == 0) return false;
 
-	if (isNewHigherPriority || hasOldBeenSeen)
+	Notification* notification = &state->queue[state->queueStart];
+
+	// Resize
+	RECT textSizeRect = {};
+	iResult = DrawTextW(
+		state->bitmapDC,
+		notification->text, -1,
+		&textSizeRect,
+		DT_CALCRECT | DT_SINGLELINE
+	);
+	//if (result == 0) break;
+	//TODO: Error
+
+	i32 textWidth = textSizeRect.right - textSizeRect.left;
+
+	u16 windowWidth = textWidth + 2*state->textPadding;
+	if (windowWidth < state->windowMinWidth) windowWidth = state->windowMinWidth;
+	if (windowWidth > state->windowMaxWidth) windowWidth = state->windowMaxWidth;
+
+	if (state->windowSize.cx != windowWidth)
 	{
-		state->isDirty = true;
-		state->error = error;
-		state->text = text;
+		state->windowSize.cx = windowWidth;
 
-
-		// Resize
-		RECT textSizeRect = {};
-		iResult = DrawTextW(
-			state->bitmapDC,
-			state->text, -1,
-			&textSizeRect,
-			DT_CALCRECT | DT_SINGLELINE
+		success = SetWindowPos(
+			state->hwnd,
+			nullptr,
+			state->windowPosition.x,
+			state->windowPosition.y,
+			state->windowSize.cx,
+			state->windowSize.cy,
+			SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
 		);
-		//if (result == 0) break;
-		//TODO: Error
-
-		i32 textWidth = textSizeRect.right - textSizeRect.left;
-
-		u16 windowWidth = textWidth + 2*state->textPadding;
-		if (windowWidth < state->windowMinWidth) windowWidth = state->windowMinWidth;
-		if (windowWidth > state->windowMaxWidth) windowWidth = state->windowMaxWidth;
-
-		if (state->windowSize.cx != windowWidth)
-		{
-			state->windowSize.cx = windowWidth;
-
-			success = SetWindowPos(
-				state->hwnd,
-				nullptr,
-				state->windowPosition.x,
-				state->windowPosition.y,
-				state->windowSize.cx,
-				state->windowSize.cy,
-				SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
-			);
-			//if (!success) break;
-			//TODO: Error
-		}
-
-
-		// Background
-		for (u16 y = 0; y < state->windowSize.cy; y++)
-		{
-			u32* row = state->pixels + y*state->windowSize.cx;
-			for (u16 x = 0; x < state->windowSize.cx; x++)
-			{
-				u32* pixel = row + x;
-				*pixel = state->backgroundColor;
-			}
-		}
-
-
-		// Text
-		COLORREF newColor = {};
-		switch (state->error)
-		{
-			case Error::None:    newColor = state->textColorNormal;  break;
-			case Error::Warning: newColor = state->textColorWarning; break;
-			case Error::Error:   newColor = state->textColorError;   break;
-			default: Assert(L"Missing Error case");
-		}
-
-		COLORREF previousColor = {};
-		previousColor = SetTextColor(state->bitmapDC, newColor);
-		if (previousColor == CLR_INVALID)
-		{
-			//TODO: Warning
-			//GetLastError
-			//L"Failed to set text color."
-		}
-
-		RECT textRect = {};
-		textRect.left   = state->textPadding;
-		textRect.top    = 0;
-		textRect.right  = state->windowSize.cx - state->textPadding;
-		textRect.bottom = state->windowSize.cy;
-
-		iResult = DrawTextW(
-			state->bitmapDC,
-			state->text, -1,
-			&textRect,
-			DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
-		);
-		//if (result == 0) break;
-		//TODO: Error
-
-
-		//TODO: Only do text rect
-		// Patch text alpha
-		u32 fullA = RGBA(0, 0, 0, 255);
-		for (u16 y = 0; y < state->windowSize.cy; y++)
-		{
-			u32* row = state->pixels + y*state->windowSize.cx;
-			for (u16 x = 0; x < state->windowSize.cx; x++)
-			{
-				u32* pixel = row + x;
-				if (*pixel != state->backgroundColor)
-					*pixel |= fullA;
-			}
-		}
-
-		// Animate
-		LARGE_INTEGER currentTicksRaw = {};
-		QueryPerformanceCounter(&currentTicksRaw);
-
-		f64 currentTicks = (f64) currentTicksRaw.QuadPart;
-
-		switch (state->animState)
-		{
-			case AnimState::Showing:
-			{
-				break;
-			}
-
-			case AnimState::Shown:
-			{
-				state->animStartTick = currentTicks;
-
-				break;
-			}
-
-			case AnimState::Hiding:
-			{
-				state->animState = AnimState::Showing;
-
-				// TODO: This will not work if the show and hide animations are different or asymmetric
-				f64 normalizedTimeInState = (currentTicks - state->animStartTick) / state->animHideTicks;
-				state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
-
-				// TODO: This will overshoot by an amount based on the animation step duration
-				uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-				//if (result == 0)
-				// TODO: Error
-				// GetLastError
-
-				break;
-			}
-
-			case AnimState::Hidden:
-			{
-				state->animState = AnimState::Showing;
-				state->animStartTick = currentTicks;
-
-				success = ShowWindow(state->hwnd, SW_SHOW);
-				//if (!success) return;
-				//TODO: Error
-
-				// TODO: This will overshoot by an amount based on the animation step duration
-				uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-				//if (result == 0)
-				// TODO: Error
-				// GetLastError
-
-				break;
-			}
-
-			default: Assert(L"Missing AnimState case");
-		}
-
-		// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
-		success = PostMessageW(state->hwnd, WM_TIMER, state->timerID, NULL);
-		//if (result == 0) return;
+		//if (!success) break;
 		//TODO: Error
 	}
+
+
+	// Background
+	for (u16 y = 0; y < state->windowSize.cy; y++)
+	{
+		u32* row = state->pixels + y*state->windowSize.cx;
+		for (u16 x = 0; x < state->windowSize.cx; x++)
+		{
+			u32* pixel = row + x;
+			*pixel = state->backgroundColor;
+		}
+	}
+
+
+	// Text
+	COLORREF newColor = {};
+	switch (notification->error)
+	{
+		case Error::None:    newColor = state->textColorNormal;  break;
+		case Error::Warning: newColor = state->textColorWarning; break;
+		case Error::Error:   newColor = state->textColorError;   break;
+		default: Assert(L"Missing Error case");
+	}
+
+	COLORREF previousColor = {};
+	previousColor = SetTextColor(state->bitmapDC, newColor);
+	if (previousColor == CLR_INVALID)
+	{
+		//TODO: Warning
+		//GetLastError
+		//L"Failed to set text color."
+	}
+
+	RECT textRect = {};
+	textRect.left = state->textPadding;
+	textRect.top = 0;
+	textRect.right = state->windowSize.cx - state->textPadding;
+	textRect.bottom = state->windowSize.cy;
+
+	iResult = DrawTextW(
+		state->bitmapDC,
+		notification->text, -1,
+		&textRect,
+		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
+	);
+	//if (result == 0) break;
+	//TODO: Error
+
+
+	//TODO: Only do text rect
+	// Patch text alpha
+	u32 fullA = RGBA(0, 0, 0, 255);
+	for (u16 y = 0; y < state->windowSize.cy; y++)
+	{
+		u32* row = state->pixels + y*state->windowSize.cx;
+		for (u16 x = 0; x < state->windowSize.cx; x++)
+		{
+			u32* pixel = row + x;
+			if (*pixel != state->backgroundColor)
+				*pixel |= fullA;
+		}
+	}
+
+	// Animate
+	LARGE_INTEGER currentTicksRaw = {};
+	QueryPerformanceCounter(&currentTicksRaw);
+
+	f64 currentTicks = (f64) currentTicksRaw.QuadPart;
+
+	switch (state->animState)
+	{
+		case AnimState::Showing:
+		{
+			break;
+		}
+
+		case AnimState::Shown:
+		{
+			state->animStartTick = currentTicks;
+
+			break;
+		}
+
+		case AnimState::Hiding:
+		{
+			state->animState = AnimState::Showing;
+
+			// TODO: This will not work if the show and hide animations are different or asymmetric
+			f64 normalizedTimeInState = (currentTicks - state->animStartTick) / state->animHideTicks;
+			state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
+
+			// TODO: This will overshoot by an amount based on the animation step duration
+			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
+			//if (result == 0)
+			// TODO: Error
+			// GetLastError
+
+			break;
+		}
+
+		case AnimState::Hidden:
+		{
+			state->animState = AnimState::Showing;
+			state->animStartTick = currentTicks;
+
+			success = ShowWindow(state->hwnd, SW_SHOW);
+			//if (!success) return;
+			//TODO: Error
+
+			// TODO: This will overshoot by an amount based on the animation step duration
+			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
+			//if (result == 0)
+			// TODO: Error
+			// GetLastError
+
+			break;
+		}
+
+		default: Assert(L"Missing AnimState case");
+	}
+
+	// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
+	success = PostMessageW(state->hwnd, WM_TIMER, state->timerID, NULL);
+	//if (result == 0) return;
+	//TODO: Error
+
+	state->isDirty = true;
+	return true;
 }
 
 LRESULT CALLBACK
@@ -237,8 +298,9 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	b32 success;
 	u64 uResult;
+	i32 iResult;
 
-	auto notification = (Notification*) GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+	auto state = (NotificationWindow*) GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 
 	switch (uMsg)
 	{
@@ -251,9 +313,112 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 
+		case WM_CREATE:
+		{
+			// Bitmap
+			BITMAPINFO bitmapInfo = {};
+			bitmapInfo.bmiHeader.biSize          = sizeof(bitmapInfo.bmiHeader);
+			bitmapInfo.bmiHeader.biWidth         = 200; //TOOD: Use maxWidth
+			bitmapInfo.bmiHeader.biHeight        = state->windowSize.cy;
+			bitmapInfo.bmiHeader.biPlanes        = 1;
+			bitmapInfo.bmiHeader.biBitCount      = 32;
+			bitmapInfo.bmiHeader.biCompression   = BI_RGB;
+			bitmapInfo.bmiHeader.biSizeImage     = 0;
+			bitmapInfo.bmiHeader.biXPelsPerMeter = 0; //TODO: ?
+			bitmapInfo.bmiHeader.biYPelsPerMeter = 0; //TODO: ?
+			bitmapInfo.bmiHeader.biClrUsed       = 0;
+			bitmapInfo.bmiHeader.biClrImportant  = 0;
+			//bitmapInfo.bmiColors                 = {}; //TODO: ?
+
+			state->screenDC = GetDC(nullptr);
+			if (!state->screenDC) return -1;
+
+			state->bitmapDC = CreateCompatibleDC(state->screenDC);
+			if (!state->bitmapDC) return -1;
+
+			// TODO: Have to GdiFlush before using pixels
+			// https://msdn.microsoft.com/query/dev14.query?appId=Dev14IDEF1&l=EN-US&k=k(WINGDI%2FCreateDIBSection);k(CreateDIBSection);k(DevLang-C%2B%2B);k(TargetOS-Windows)&rd=true
+			state->bitmap = CreateDIBSection(
+				state->bitmapDC,
+				&bitmapInfo,
+				DIB_RGB_COLORS,
+				(void**) &state->pixels,
+				nullptr,
+				0
+			);
+			if (!state->pixels) return -1;
+
+			state->previousBitmap = (HBITMAP) SelectObject(state->bitmapDC, state->bitmap);
+			if (!state->previousBitmap) return -1;
+
+			// Font
+			NONCLIENTMETRICSW nonClientMetrics = {};
+			nonClientMetrics.cbSize = sizeof(nonClientMetrics);
+
+			// TODO: Is it worth moving this to a function to linearize the flow?
+			success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
+			if (success)
+			{
+				state->font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
+				if (state->font)
+				{
+					state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
+					if (!state->previousFont)
+					{
+						//TODO: Queue warning notification
+						//GetLastError
+						//L"Failed to use created font."
+					}
+				}
+				else
+				{
+					//TODO: Queue warning notification
+					//GetLastError
+					//L"Failed to create font."
+				}
+			}
+			else
+			{
+				//TODO: Queue warning notification
+				//GetLastError
+				//L"Failed to obtain the current font."
+			}
+
+			iResult = SetBkMode(state->bitmapDC, TRANSPARENT);
+			if (iResult == 0)
+			{
+				//TODO: Queue warning notification
+				//GetLastError
+				//L"Failed to set transparent text background."
+			}
+
+			state->isInitialized = true;
+
+			return 0;
+		}
+
+		case WM_DESTROY:
+		{
+			state->isInitialized = false;
+
+			// TODO: Error handling
+			// NOTE: We only really need to bother with this because we want to
+			// destroy the startup window cleanly
+			SelectObject(state->bitmapDC, state->previousFont);
+			DeleteObject(state->font);
+
+			SelectObject(state->bitmapDC, state->previousBitmap);
+			DeleteObject(state->bitmap);
+
+			DeleteDC(state->bitmapDC);
+			ReleaseDC(nullptr, state->screenDC);
+
+			return 0;
+		}
+
 		case WM_TIMER:
 		{
-			if (wParam == notification->timerID)
+			if (wParam == state->timerID)
 			{
 				// TODO: Cleanup
 				b32 changed = true;
@@ -267,26 +432,26 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					success = QueryPerformanceCounter(&currentTicksRaw);
 
 					f64 currentTicks = (f64) currentTicksRaw.QuadPart;
-					f64 animTicks = currentTicks - notification->animStartTick;
+					f64 animTicks = currentTicks - state->animStartTick;
 
 					f32 newAlpha = 1;
-					switch (notification->animState)
+					switch (state->animState)
 					{
 						case AnimState::Showing:
 						{
 							alphaChanged = true;
 
-							if (animTicks < notification->animShowTicks)
+							if (animTicks < state->animShowTicks)
 							{
 								// TODO: Do we want something other than linear?
-								newAlpha = (f32) (animTicks / notification->animShowTicks);
+								newAlpha = (f32) (animTicks / state->animShowTicks);
 							}
 							else
 							{
-								f64 overshootTicks = animTicks - notification->animShowTicks;
+								f64 overshootTicks = animTicks - state->animShowTicks;
 
-								notification->animState = AnimState::Shown;
-								notification->animStartTick = currentTicks - overshootTicks;
+								state->animState = AnimState::Shown;
+								state->animStartTick = currentTicks - overshootTicks;
 
 								changed = true;
 								continue;
@@ -296,26 +461,26 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						case AnimState::Shown:
 						{
-							if (animTicks < notification->animIdleTicks)
+							if (animTicks < state->animIdleTicks)
 							{
-								// TODO: This is happening more than it should
 								newAlpha = 1;
 
-								u32 remainingMS = (u32) ((notification->animIdleTicks - animTicks) / notification->tickFrequency * 1000.);
-								uResult = SetTimer(hwnd, notification->timerID, remainingMS, nullptr);
+								// TODO: Round?
+								u32 remainingMS = (u32) ((state->animIdleTicks - animTicks) / state->tickFrequency * 1000.);
+								uResult = SetTimer(hwnd, state->timerID, remainingMS, nullptr);
 								//if (result == 0)
 								// TODO: Error
 								// GetLastError
 							}
 							else
 							{
-								f64 overshootTicks = animTicks - notification->animIdleTicks;
+								f64 overshootTicks = animTicks - state->animIdleTicks;
 
-								notification->animState = AnimState::Hiding;
-								notification->animStartTick = currentTicks - overshootTicks;
+								state->animState = AnimState::Hiding;
+								state->animStartTick = currentTicks - overshootTicks;
 
 								// TODO: Formalize state changes
-								uResult = SetTimer(hwnd, notification->timerID, notification->animUpdateMS, nullptr);
+								uResult = SetTimer(hwnd, state->timerID, state->animUpdateMS, nullptr);
 								//if (result == 0)
 								// TODO: Error
 								// GetLastError
@@ -329,19 +494,32 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						case AnimState::Hiding:
 						{
+							//Auto-show next notification
+							b32 isNotificationPending = state->queueCount > 1;
+							b32 allowNextNote = animTicks > .3f * state->animHideTicks;
+
+							if (allowNextNote && isNotificationPending)
+							{
+								state->queueStart = LogicalToActualIndex(state, 1);
+								state->queueCount--;
+
+								ProcessNotificationQueue(state);
+								return 0;
+							}
+
 							alphaChanged = true;
 
-							if (animTicks < notification->animHideTicks)
+							if (animTicks < state->animHideTicks)
 							{
 								// TODO: Do we want something other than linear?
-								newAlpha = (f32) (1. - animTicks / notification->animHideTicks);
+								newAlpha = (f32) (1. - animTicks / state->animHideTicks);
 							}
 							else
 							{
-								f64 overshootTicks = animTicks - notification->animHideTicks;
+								f64 overshootTicks = animTicks - state->animHideTicks;
 
-								notification->animState = AnimState::Hidden;
-								notification->animStartTick = currentTicks - overshootTicks;
+								state->animState = AnimState::Hidden;
+								state->animStartTick = currentTicks - overshootTicks;
 
 								changed = true;
 								continue;
@@ -352,11 +530,13 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						case AnimState::Hidden:
 						{
-							notification->error = Error::None;
+							Assert(state->queueCount == 1);
+							state->queueStart = 0;
+							state->queueCount = 0;
 
 							newAlpha = 0;
 
-							success = KillTimer(hwnd, notification->timerID);
+							success = KillTimer(hwnd, state->timerID);
 							// TODO: Error
 
 							success = ShowWindow(hwnd, SW_HIDE);
@@ -368,9 +548,9 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						default: Assert(L"Missing AnimState case");
 					}
 
-					bool isHidden = notification->animState == AnimState::Hidden;
+					bool isHidden = state->animState == AnimState::Hidden;
 
-					if (notification->isDirty || alphaChanged)
+					if (state->isDirty || alphaChanged)
 					{
 						BLENDFUNCTION blendFunction = {};
 						blendFunction.BlendOp             = AC_SRC_OVER;
@@ -381,10 +561,10 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						POINT zeroPoint = {0, 0};
 
 						success = UpdateLayeredWindow(
-							notification->hwnd,
-							notification->screenDC,
-							&notification->windowPosition, &notification->windowSize,
-							notification->bitmapDC,
+							state->hwnd,
+							state->screenDC,
+							&state->windowPosition, &state->windowSize,
+							state->bitmapDC,
 							&zeroPoint,
 							CLR_INVALID,
 							&blendFunction,
@@ -392,7 +572,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						);
 						//TODO: Warning
 
-						notification->isDirty = !success;
+						state->isDirty = !success;
 					}
 				}
 
@@ -403,4 +583,13 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+inline u8
+LogicalToActualIndex(NotificationWindow* state, u8 index)
+{
+	Assert(index <= state->queueCount);
+
+	u8 result = (state->queueStart + index) & ArrayCount(state->queue);
+	return result;
 }

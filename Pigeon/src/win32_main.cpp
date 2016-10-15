@@ -57,114 +57,34 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	if (FAILED(hr)) return false;
 
 
-	// Notification Settings
-	// NOTE: QPC and QPF are documented as not being able to fail on XP+
-	LARGE_INTEGER tickFrequency = {};
-	QueryPerformanceFrequency(&tickFrequency);
-
-	f64 tickFrequencyF64 = (f64) tickFrequency.QuadPart;
-
-	Notification notification = {};
-	notification.windowMinWidth    = 200; //TODO: Implement
-	notification.windowMaxWidth    = 600; //TODO: Implement
-	notification.windowSize        = {200, 60};
-	notification.windowPosition    = { 50, 60};
-	notification.backgroundColor   = RGBA(16, 16, 16, 242);
-	notification.textColorNormal   = RGB(255, 255, 255);
-	notification.textColorError    = RGB(255, 0, 0);
-	notification.textColorWarning  = RGB(255, 255, 0);
-	notification.textPadding       = 20;
-	notification.animShowTicks     = 0.1 * tickFrequencyF64;
-	notification.animIdleTicks     = 2.0 * tickFrequencyF64;
-	notification.animHideTicks     = 1.0 * tickFrequencyF64;
-	notification.animUpdateMS      = 1000 / 30;
-	notification.timerID           = 1;
-	notification.tickFrequency     = tickFrequencyF64;
-
-	// TODO: Queue. Ensure notification is ready
-	//if (notification.animUpdateMS < USER_TIMER_MINIMUM)
-	//	Notify(&notification, L"Animation update time is less than allowed minimum.", Error::Warning);
-
-
-	// GDI Resources
-	//TODO: Maybe do this in WM_CREATE and clean up in WM_DESTROY
+	// Notification
+	NotificationWindow notification = {};
 	{
-		// Bitmap
-		BITMAPINFO bitmapInfo = {};
-		bitmapInfo.bmiHeader.biSize          = sizeof(bitmapInfo.bmiHeader);
-		bitmapInfo.bmiHeader.biWidth         = 200; //TOOD: Use maxWidth
-		bitmapInfo.bmiHeader.biHeight        = notification.windowSize.cy;
-		bitmapInfo.bmiHeader.biPlanes        = 1;
-		bitmapInfo.bmiHeader.biBitCount      = 32;
-		bitmapInfo.bmiHeader.biCompression   = BI_RGB;
-		bitmapInfo.bmiHeader.biSizeImage     = 0;
-		bitmapInfo.bmiHeader.biXPelsPerMeter = 0; //TODO: ?
-		bitmapInfo.bmiHeader.biYPelsPerMeter = 0; //TODO: ?
-		bitmapInfo.bmiHeader.biClrUsed       = 0;
-		bitmapInfo.bmiHeader.biClrImportant  = 0;
-		//bitmapInfo.bmiColors                 = {}; //TODO: ?
+		// NOTE: QPC and QPF are documented as not being able to fail on XP+
+		LARGE_INTEGER tickFrequency = {};
+		QueryPerformanceFrequency(&tickFrequency);
 
-		notification.screenDC = GetDC(nullptr);
-		if (!notification.screenDC) goto Cleanup;
+		f64 tickFrequencyF64 = (f64) tickFrequency.QuadPart;
 
-		notification.bitmapDC = CreateCompatibleDC(notification.screenDC);
-		if (!notification.bitmapDC) goto Cleanup;
+		notification.windowMinWidth    = 200; //TODO: Implement
+		notification.windowMaxWidth    = 600; //TODO: Implement
+		notification.windowSize        = {200, 60};
+		notification.windowPosition    = { 50, 60};
+		notification.backgroundColor   = RGBA(16, 16, 16, 242);
+		notification.textColorNormal   = RGB(255, 255, 255);
+		notification.textColorError    = RGB(255, 0, 0);
+		notification.textColorWarning  = RGB(255, 255, 0);
+		notification.textPadding       = 20;
+		notification.animShowTicks     = 0.1 * tickFrequencyF64;
+		notification.animIdleTicks     = 2.0 * tickFrequencyF64;
+		notification.animHideTicks     = 1.0 * tickFrequencyF64;
+		notification.animUpdateMS      = 1000 / 30;
+		notification.timerID           = 1;
+		notification.tickFrequency     = tickFrequencyF64;
 
-		// TODO: Have to GdiFlush before using pixels
-		// https://msdn.microsoft.com/query/dev14.query?appId=Dev14IDEF1&l=EN-US&k=k(WINGDI%2FCreateDIBSection);k(CreateDIBSection);k(DevLang-C%2B%2B);k(TargetOS-Windows)&rd=true
-		notification.bitmap = CreateDIBSection(
-			notification.bitmapDC,
-			&bitmapInfo,
-			DIB_RGB_COLORS,
-			(void**) &notification.pixels,
-			nullptr,
-			0
-		);
-		if (!notification.pixels) goto Cleanup;
-
-		notification.previousBitmap = (HBITMAP) SelectObject(notification.bitmapDC, notification.bitmap);
-		if (!notification.previousBitmap) goto Cleanup;
-
-		// Font
-		NONCLIENTMETRICSW nonClientMetrics = {};
-		nonClientMetrics.cbSize = sizeof(nonClientMetrics);
-
-		// TODO: Is it worth moving this to a function to linearize the flow?
-		success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
-		if (success)
-		{
-			notification.font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
-			if (notification.font)
-			{
-				notification.previousFont = (HFONT) SelectObject(notification.bitmapDC, notification.font);
-				if (!notification.previousFont)
-				{
-					//TODO: Queue warning message
-					//GetLastError
-					//L"Failed to use created font."
-				}
-			}
-			else
-			{
-				//TODO: Queue warning message
-				//GetLastError
-				//L"Failed to create font."
-			}
-		}
-		else
-		{
-			//TODO: Queue warning message
-			//GetLastError
-			//L"Failed to obtain the current font."
-		}
-
-		iResult = SetBkMode(notification.bitmapDC, TRANSPARENT);
-		if (iResult == 0)
-		{
-			//TODO: Queue warning message
-			//GetLastError
-			//L"Failed to set transparent text background."
-		}
+		// TODO: Queue. Ensure notification is ready
+		//if (notification.animUpdateMS < USER_TIMER_MINIMUM)
+		//	Notify(&notification, L"Animation update time is less than allowed minimum.", Error::Warning);
 	}
 
 
@@ -228,6 +148,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	//DEBUG
 	Notify(&notification, L"Started!");
 
+
 	// Message pump
 	bool quit = false;
 	while (!quit)
@@ -271,7 +192,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					quit = true;
 					break;
 
+				#define UxdDisplayChangeMessage 0xC22D
+
+				// Expected messages
 				case WM_TIMER:
+				case UxdDisplayChangeMessage:
 					break;
 
 				// TODO: Disable key messages?
@@ -281,22 +206,14 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					//Fall through to default
 
 				default:
-					Notify(&notification, L"Unexpected message: %d\n", Error::Warning);
+					c16 buffer[256] = {};
+					swprintf(buffer, L"Unexpected message: %d\n", msg.message);
+					Notify(&notification, buffer, Error::Warning);
 			}
 		}
 	}
 
 Cleanup:
-	//TODO: Do we even need to bother with this?
-	SelectObject(notification.bitmapDC, notification.previousFont);
-	DeleteObject(notification.font);
-
-	SelectObject(notification.bitmapDC, notification.previousBitmap);
-	DeleteObject(notification.bitmap);
-
-	DeleteDC(notification.bitmapDC);
-	ReleaseDC(nullptr, notification.screenDC);
-
 	CoUninitialize();
 
 	// TODO: These may be unnecessary, but I don't know what guarantees Windows

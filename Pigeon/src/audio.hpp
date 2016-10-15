@@ -5,8 +5,8 @@
 #include "IPolicyConfig.h"
 
 // NOTE: CoInitialize is assumed to have been called.
-inline bool
-CycleDefaultAudioDevice(Notification* notification)
+inline b32
+CycleDefaultAudioDevice(NotificationWindow* notification)
 {
 	HRESULT hr;
 
@@ -87,6 +87,9 @@ CycleDefaultAudioDevice(Notification* notification)
 		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
 		if (FAILED(hr)) return false;
 
+		// TODO: I think this will end up reading from freed memory if
+		// the notification is queue. However, normal (non-warning/error)
+		// notifications are currently never queued.
 		Notify(notification, deviceDescription.pwszVal);
 
 		hr = PropVariantClear(&deviceDescription);
