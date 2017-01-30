@@ -24,7 +24,7 @@ struct Notification
 
 struct NotificationWindow
 {
-	Notification queue[3]          = {};
+	Notification queue[4]          = {};
 	u8           queueStart        = 0;
 	u8           queueCount        = 0;
 
@@ -172,8 +172,26 @@ LogicalToActualIndex(NotificationWindow* state, u8 index)
 {
 	Assert(index <= state->queueCount);
 
-	u8 result = (state->queueStart + index) & ArrayCount(state->queue);
+	u8 result = (state->queueStart + index) & (ArrayCount(state->queue) - 1);
 	return result;
+}
+
+inline b32
+UpdateWindowPositionAndSize(NotificationWindow* state)
+{
+	b32 success;
+	
+	success = SetWindowPos(
+		state->hwnd,
+		nullptr,
+		state->windowPosition.x,
+		state->windowPosition.y,
+		state->windowSize.cx,
+		state->windowSize.cy,
+		SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
+	);
+
+	return success;
 }
 
 inline void
@@ -209,15 +227,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 	{
 		state->windowSize.cx = windowWidth;
 
-		success = SetWindowPos(
-			state->hwnd,
-			nullptr,
-			state->windowPosition.x,
-			state->windowPosition.y,
-			state->windowSize.cx,
-			state->windowSize.cy,
-			SWP_DEFERERASE | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOREPOSITION | SWP_NOZORDER
-		);
+		success = UpdateWindowPositionAndSize(state);
 		//if (!success) break;
 		//TODO: Error
 	}

@@ -11,7 +11,6 @@
 
 // TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
-static const u32 UxdDisplayChangeMessage = 0xC22D;
 
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
@@ -72,6 +71,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		Notify(&notification, L"Started!");
 	}
 
+
 	// Single Instance
 	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
 	if (!singleInstanceEvent) NotifyWindowsError(&notification, L"CreateEventW failed");
@@ -86,8 +86,17 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		if (uResult == WAIT_FAILED ) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
 	}
 
-	hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-	if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
+
+	// Misc
+	{
+		// NOTE: Need for audio stuff
+		hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
+		if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
+
+		// TODO: BELOW_NORMAL_PRIORITY_CLASS?
+		success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+		if (!success) NotifyWindowsError(&notification, L"CreateWindowExW failed", Error::Warning);
+	}
 
 
 	// Window
@@ -130,31 +139,32 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	const i32        openPlaybackDevicesHotkeyID = 1;
 	const i32           cycleRefreshRateHotkeyID = 2;
 	const i32 openDisplayAdapterSettingsHotkeyID = 3;
+	const i32              debug_MessageHotkeyID = 4;
+	const i32              debug_WarningHotkeyID = 5;
+	const i32                debug_ErrorHotkeyID = 6;
+
+	struct Hotkey
 	{
-		struct Hotkey
-		{
-			i32 id;
-			u32 modifier;
-			u32 key;
-		};
+		i32 id;
+		u32 modifier;
+		u32 key;
+	};
 
-		Hotkey hotkeys[] = {
-			{           cycleAudioDeviceHotkeyID,           0, VK_F5 },
-			{        openPlaybackDevicesHotkeyID, MOD_CONTROL, VK_F5 },
-			{           cycleRefreshRateHotkeyID,           0, VK_F6 },
-			{ openDisplayAdapterSettingsHotkeyID, MOD_CONTROL, VK_F6 }
-		};
+	Hotkey hotkeys[] = {
+		{           cycleAudioDeviceHotkeyID,           0, VK_F5  },
+		{        openPlaybackDevicesHotkeyID, MOD_CONTROL, VK_F5  },
+		{           cycleRefreshRateHotkeyID,           0, VK_F6  },
+		{ openDisplayAdapterSettingsHotkeyID, MOD_CONTROL, VK_F6  },
+		{              debug_MessageHotkeyID,           0, VK_F10 },
+		{              debug_WarningHotkeyID,           0, VK_F11 },
+		{                debug_ErrorHotkeyID,           0, VK_F12 },
+	};
 
-		for (u8 i = 0; i < ArrayCount(hotkeys); i++)
-		{
-			success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
-			if (!success) NotifyFormat(&notification, L"RegisterHotKey failed", hotkeys[i].id, Error::Warning);
-		}
+	for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+	{
+		success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
+		if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed", Error::Warning);
 	}
-
-	// TODO: BELOW_NORMAL_PRIORITY_CLASS?
-	success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
-	if (!success) NotifyWindowsError(&notification, L"CreateWindowExW failed", Error::Warning);
 
 
 	// Message pump
@@ -163,8 +173,22 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	{
 		//TODO: I'm unsure if this releases on ALL possible messages
 		uResult = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
-		if (uResult == WAIT_OBJECT_0) PostQuitMessage(0);
 		if (uResult == WAIT_FAILED  ) Notify(&notification, L"MsgWaitForMultipleObjects WAIT_FAILED", Error::Error);
+		if (uResult == WAIT_OBJECT_0)
+		{
+			for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+			{
+				success = UnregisterHotKey(nullptr, hotkeys[i].id);
+				if (!success) NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
+			}
+			SetEvent(singleInstanceEvent);
+
+			notification.windowPosition.y += notification.windowSize.cy + 10;
+			UpdateWindowPositionAndSize(&notification);
+
+			// TODO: Only once
+			Notify(&notification, L"There can be only one!", Error::Error);
+		}
 
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -192,6 +216,18 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						case openDisplayAdapterSettingsHotkeyID:
 							OpenDisplayAdapterSettingsWindow();
 							break;
+
+						case debug_MessageHotkeyID:
+							Notify(&notification, L"DEBUG Message", Error::None);
+							break;
+
+						case debug_WarningHotkeyID:
+							Notify(&notification, L"DEBUG Warning", Error::Warning);
+							break;
+
+						case debug_ErrorHotkeyID:
+							Notify(&notification, L"DEBUG Error", Error::Error);
+							break;
 					}
 					break;
 				}
@@ -203,7 +239,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				// Expected messages
 				case WM_TIMER:
 				case WM_PROCESSQUEUE:
-				case UxdDisplayChangeMessage:
 					break;
 
 				// TODO: Disable key messages?
@@ -213,9 +248,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					//Fall through to default
 
 				default:
-					c16 buffer[128] = {};
-					swprintf(buffer, ArrayCount(buffer), L"Unexpected message: %d\n", msg.message);
-					Notify(&notification, buffer, Error::Warning);
+					if (msg.message <= WM_PROCESSQUEUE)
+					{
+						c16 buffer[128] = {};
+						swprintf(buffer, ArrayCount(buffer), L"Unexpected message: %d\n", msg.message);
+						Notify(&notification, buffer, Error::Warning);
+					}
+					break;
 			}
 		}
 	}
@@ -224,14 +263,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	//Cleanup
 	CoUninitialize();
 
-	// TODO: These may be unnecessary, but I don't know what guarantees Windows
-	// makes about when SetEvent will cause waiting threads to release. If the
-	// release happens immediately, the hotkeys need to be unregistered first.
-	UnregisterHotKey(nullptr, cycleAudioDeviceHotkeyID);
-	UnregisterHotKey(nullptr, openPlaybackDevicesHotkeyID);
-	UnregisterHotKey(nullptr, cycleRefreshRateHotkeyID);
-	UnregisterHotKey(nullptr, openDisplayAdapterSettingsHotkeyID);
-	SetEvent(singleInstanceEvent);
 
 	// Leak all the things!
 	// (Windows destroys everything automatically)
