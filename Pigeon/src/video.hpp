@@ -12,7 +12,7 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 
 // NOTE: CoInitialize is assumed to have been called.
 inline bool
-CycleRefreshRate()
+CycleRefreshRate(NotificationWindow* notification)
 {
 	// Get current display settings
 	DEVMODEW currentDisplaySettings = {};
@@ -67,6 +67,11 @@ CycleRefreshRate()
 
 		LONG result = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
 		if (result < 0) return false;
+
+		// TODO: Should use the target string buffer directly
+		c16 text[256];
+		swprintf(text, ArrayCount(text), L"%u Hz", newDisplaySettings.dmDisplayFrequency);
+		Notify(notification, text);
 	}
 
 	return true;

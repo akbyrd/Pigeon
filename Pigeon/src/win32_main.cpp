@@ -206,7 +206,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							break;
 
 						case cycleRefreshRateHotkeyID:
-							CycleRefreshRate();
+							CycleRefreshRate(&notification);
 							break;
 
 						case openDisplayAdapterSettingsHotkeyID:
