@@ -88,7 +88,7 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 		if (FAILED(hr)) return false;
 
 		// TODO: I think this will end up reading from freed memory if
-		// the notification is queue. However, normal (non-warning/error)
+		// the notification is queued. However, normal (non-warning/error)
 		// notifications are currently never queued.
 		Notify(notification, deviceDescription.pwszVal);
 

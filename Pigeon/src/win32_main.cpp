@@ -38,10 +38,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
 
 
-	// NOTE: Handles are closed when process terminates.
-	// Events are destroyed when the last handle is destroyed.
-
-
 	// Notification
 	NotificationWindow notification = {};
 	{
@@ -51,8 +47,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		f64 tickFrequencyF64 = (f64) tickFrequency.QuadPart;
 
-		notification.windowMinWidth    = 200; //TODO: Implement
-		notification.windowMaxWidth    = 600; //TODO: Implement
+		notification.windowMinWidth    = 200; // TODO: Implement
+		notification.windowMaxWidth    = 600; // TODO: Implement
 		notification.windowSize        = {200, 60};
 		notification.windowPosition    = { 50, 60};
 		notification.backgroundColor   = RGBA(16, 16, 16, 242);
@@ -168,10 +164,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Message pump
-	bool quit = false;
+	b32 quit = false;
 	while (!quit)
 	{
-		//TODO: I'm unsure if this releases on ALL possible messages
+		// TODO: I'm unsure if this releases on ALL possible messages
 		uResult = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
 		if (uResult == WAIT_FAILED  ) Notify(&notification, L"MsgWaitForMultipleObjects WAIT_FAILED", Error::Error);
 		if (uResult == WAIT_OBJECT_0)
@@ -236,17 +232,21 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					quit = true;
 					break;
 
+				/* TODO: When the machine wakes up from sleep it looks like QueryPerformanceCounter
+				 * starts back over. This causes animations to break because they thing they have
+				 * an extremely long period of time left. The result is a notification flashing in
+				 * and out rapidly.
+				 */
 				// Expected messages
 				case WM_TIMER:
 				case WM_PROCESSQUEUE:
 					break;
 
-				// TODO: Disable key messages?
-				//       Somehow we're getting key messages, but only sometimes
-				case WM_KEYDOWN: //256
-				case WM_KEYUP: //257
-					//Fall through to default
-
+				// TODO: 29 - when installing fonts
+				// TODO: WM_TIMECHANGE (30) - Got this one recently.
+				// TODO: WM_KEYDOWN (256) / WM_KEYUP (257) - Somehow we're getting key messages, but only sometimes
+				// TODO: Open bin, wait for overflow, open bin, stuck on message
+				// TODO: FormatMessage is not giving good string translations
 				default:
 					if (msg.message <= WM_PROCESSQUEUE)
 					{
@@ -260,12 +260,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	}
 
 
-	//Cleanup
+	// Cleanup
 	CoUninitialize();
 
+	// TODO: Show remaining warnings / errors in a dialog?
 
 	// Leak all the things!
 	// (Windows destroys everything automatically)
+
+	// NOTE: Handles are closed when process terminates.
+	// Events are destroyed when the last handle is destroyed.
 
 	// TODO: This is wrong
 	return LOWORD(msg.wParam);

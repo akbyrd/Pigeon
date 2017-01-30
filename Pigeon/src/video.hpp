@@ -79,8 +79,8 @@ OpenDisplayAdapterSettingsWindow()
 	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
 	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return false;
 
-	//NOTE: Path does not end with a backslash unless the
-	//system directory is the root directory
+	// NOTE: Path does not end with a backslash unless the
+	// system directory is the root directory
 	if (commandLine[endIndex-1] != '\\')
 		commandLine[endIndex++] = '\\';
 

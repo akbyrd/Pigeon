@@ -62,7 +62,7 @@ struct NotificationWindow
 };
 
 void ProcessNotificationQueue(NotificationWindow* state);
-u8 LogicalToActualIndex(NotificationWindow* state, u8 index); //TODO: Remove?
+u8 LogicalToActualIndex(NotificationWindow* state, u8 index); // TODO: Remove?
 
 void
 Notify(NotificationWindow* state, c16* text, Error error = Error::None)
@@ -96,7 +96,6 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 		}
 	}
 
-
 	// Overflow
 	u8 maxQueueCount = ArrayCount(state->queue) - 1;
 	if (state->queueCount == maxQueueCount)
@@ -115,7 +114,6 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	state->queue[nextIndex].error = error;
 	StrCpyW(state->queue[nextIndex].text, text);
 	state->queueCount++;
-
 
 
 	if (state->queueCount == 1)
@@ -171,6 +169,7 @@ inline u8
 LogicalToActualIndex(NotificationWindow* state, u8 index)
 {
 	Assert(index <= state->queueCount);
+	//TODO: Assert ArrayCount(state->queue) is a power of 2
 
 	u8 result = (state->queueStart + index) & (ArrayCount(state->queue) - 1);
 	return result;
@@ -215,7 +214,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 		DT_CALCRECT | DT_SINGLELINE
 	);
 	//if (result == 0) break;
-	//TODO: Error
+	// TODO: Error
 
 	i32 textWidth = textSizeRect.right - textSizeRect.left;
 
@@ -229,7 +228,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 
 		success = UpdateWindowPositionAndSize(state);
 		//if (!success) break;
-		//TODO: Error
+		// TODO: Error
 	}
 
 
@@ -259,7 +258,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 	previousColor = SetTextColor(state->bitmapDC, newColor);
 	if (previousColor == CLR_INVALID)
 	{
-		//TODO: Warning
+		// TODO: Warning
 		//GetLastError
 		//L"Failed to set text color."
 	}
@@ -277,10 +276,10 @@ ProcessNotificationQueue(NotificationWindow* state)
 		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
 	);
 	//if (result == 0) break;
-	//TODO: Error
+	// TODO: Error
 
 
-	//TODO: Only do text rect
+	// TODO: Only do text rect
 	// Patch text alpha
 	u32 fullA = RGBA(0, 0, 0, 255);
 	for (u16 y = 0; y < state->windowSize.cy; y++)
@@ -326,7 +325,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
 			//if (result == 0)
 			// TODO: Error
-			// GetLastError
+			//GetLastError
 
 			break;
 		}
@@ -338,13 +337,13 @@ ProcessNotificationQueue(NotificationWindow* state)
 
 			success = ShowWindow(state->hwnd, SW_SHOW);
 			//if (!success) return;
-			//TODO: Error
+			// TODO: Error
 
 			// TODO: This will overshoot by an amount based on the animation step duration
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
 			//if (result == 0)
 			// TODO: Error
-			// GetLastError
+			//GetLastError
 
 			break;
 		}
@@ -355,7 +354,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 	// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
 	success = PostMessageW(state->hwnd, WM_TIMER, state->timerID, NULL);
 	//if (result == 0) return;
-	//TODO: Error
+	// TODO: Error
 
 	state->isDirty = true;
 }
@@ -391,11 +390,11 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			bitmapInfo.bmiHeader.biBitCount      = 32;
 			bitmapInfo.bmiHeader.biCompression   = BI_RGB;
 			bitmapInfo.bmiHeader.biSizeImage     = 0;
-			bitmapInfo.bmiHeader.biXPelsPerMeter = 0; //TODO: ?
-			bitmapInfo.bmiHeader.biYPelsPerMeter = 0; //TODO: ?
+			bitmapInfo.bmiHeader.biXPelsPerMeter = 0; // TODO: ?
+			bitmapInfo.bmiHeader.biYPelsPerMeter = 0; // TODO: ?
 			bitmapInfo.bmiHeader.biClrUsed       = 0;
 			bitmapInfo.bmiHeader.biClrImportant  = 0;
-			//bitmapInfo.bmiColors                 = {}; //TODO: ?
+			//bitmapInfo.bmiColors                 = {}; // TODO: ?
 
 			state->screenDC = GetDC(nullptr);
 			if (!state->screenDC) return -1;
@@ -433,21 +432,21 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
 					if (!state->previousFont)
 					{
-						//TODO: Queue warning notification
+						// TODO: Queue warning notification
 						//GetLastError
 						//L"Failed to use created font."
 					}
 				}
 				else
 				{
-					//TODO: Queue warning notification
+					// TODO: Queue warning notification
 					//GetLastError
 					//L"Failed to create font."
 				}
 			}
 			else
 			{
-				//TODO: Queue warning notification
+				// TODO: Queue warning notification
 				//GetLastError
 				//L"Failed to obtain the current font."
 			}
@@ -455,7 +454,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			iResult = SetBkMode(state->bitmapDC, TRANSPARENT);
 			if (iResult == 0)
 			{
-				//TODO: Queue warning notification
+				// TODO: Queue warning notification
 				//GetLastError
 				//L"Failed to set transparent text background."
 			}
@@ -544,7 +543,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								uResult = SetTimer(hwnd, state->timerID, remainingMS, nullptr);
 								//if (result == 0)
 								// TODO: Error
-								// GetLastError
+								//GetLastError
 							}
 							else
 							{
@@ -557,7 +556,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								uResult = SetTimer(hwnd, state->timerID, state->animUpdateMS, nullptr);
 								//if (result == 0)
 								// TODO: Error
-								// GetLastError
+								//GetLastError
 
 								changed = true;
 								continue;
@@ -568,7 +567,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						case AnimState::Hiding:
 						{
-							//Auto-show next notification
+							// Auto-show next notification
 							b32 isNotificationPending = state->queueCount > 1;
 							b32 allowNextNote = animTicks > .3f * state->animHideTicks;
 							allowNextNote &= state->queue[state->queueStart].error != Error::Error;
@@ -653,7 +652,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							&blendFunction,
 							ULW_ALPHA
 						);
-						//TODO: Warning
+						// TODO: Warning
 
 						state->isDirty = !success;
 					}
