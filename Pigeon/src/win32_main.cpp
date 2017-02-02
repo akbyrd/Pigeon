@@ -9,7 +9,6 @@
 #include "audio.hpp"
 #include "video.hpp"
 
-// TODO: Move to resources?
 static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 
 int CALLBACK
@@ -21,6 +20,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
+	// TODO: Fix bug when starting lots of instance very quickly. Looks like a race condition.
 	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon sounds
@@ -29,11 +29,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
 
 	// TODO: Hotkey to restart
+	// TODO: Refactor animation stuff
 	// TODO: Sound doesn't play on most devices when cycling audio devices
 	// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
 	// TODO: Integrate volume ducking?
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-	// TODO: Use RawInput to get hardware key so it's not Logitech/Corsair profile dependent?
 	// TODO: Auto-detect headset being turned on/off
 	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
 
@@ -42,28 +42,28 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	NotificationWindow notification = {};
 	{
 		// NOTE: QPC and QPF are documented as not being able to fail on XP+
-		LARGE_INTEGER tickFrequency = {};
-		QueryPerformanceFrequency(&tickFrequency);
+		LARGE_INTEGER win32_tickFrequency = {};
+		QueryPerformanceFrequency(&win32_tickFrequency);
 
-		f64 tickFrequencyF64 = (f64) tickFrequency.QuadPart;
+		f64 tickFrequency = (f64) win32_tickFrequency.QuadPart;
 
-		notification.windowMinWidth    = 200; // TODO: Implement
-		notification.windowMaxWidth    = 600; // TODO: Implement
-		notification.windowSize        = {200, 60};
-		notification.windowPosition    = { 50, 60};
-		notification.backgroundColor   = RGBA(16, 16, 16, 242);
-		notification.textColorNormal   = RGB(255, 255, 255);
-		notification.textColorError    = RGB(255, 0, 0);
-		notification.textColorWarning  = RGB(255, 255, 0);
-		notification.textPadding       = 20;
-		notification.animShowTicks     = 0.1 * tickFrequencyF64;
-		notification.animIdleTicks     = 2.0 * tickFrequencyF64;
-		notification.animHideTicks     = 1.0 * tickFrequencyF64;
-		notification.animUpdateMS      = 1000 / 30;
-		notification.timerID           = 1;
-		notification.tickFrequency     = tickFrequencyF64;
+		notification.windowMinWidth   = 200; // TODO: Implement
+		notification.windowMaxWidth   = 600; // TODO: Implement
+		notification.windowSize       = {200, 60};
+		notification.windowPosition   = { 50, 60};
+		notification.backgroundColor  = RGBA(16, 16, 16, 242);
+		notification.textColorNormal  = RGB(255, 255, 255);
+		notification.textColorError   = RGB(255, 0, 0);
+		notification.textColorWarning = RGB(255, 255, 0);
+		notification.textPadding      = 20;
+		notification.animShowTicks    = 0.1 * tickFrequency;
+		notification.animIdleTicks    = 2.0 * tickFrequency;
+		notification.animHideTicks    = 1.0 * tickFrequency;
+		notification.animUpdateMS     = 1000 / 30;
+		notification.timerID          = 1;
+		notification.tickFrequency    = tickFrequency;
 
-		//DEBUG
+		// DEBUG
 		Notify(&notification, L"Started!");
 	}
 
@@ -126,6 +126,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			hInstance,
 			&notification
 		);
+		// TODO: This and other errors are critical, can't be shown as notification. Need to close the program.
 		if (notification.hwnd == INVALID_HANDLE_VALUE) NotifyWindowsError(&notification, L"CreateWindowExW failed");
 	}
 
@@ -248,12 +249,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				// TODO: Open bin, wait for overflow, open bin, stuck on message
 				// TODO: FormatMessage is not giving good string translations
 				default:
-					if (msg.message <= WM_PROCESSQUEUE)
-					{
-						c16 buffer[128] = {};
-						swprintf(buffer, ArrayCount(buffer), L"Unexpected message: %d\n", msg.message);
-						Notify(&notification, buffer, Error::Warning);
-					}
+					if (msg.message < WM_PROCESSQUEUE)
+						NotifyFormat(&notification, L"Unexpected message: %d\n", Error::Warning, msg.message);
 					break;
 			}
 		}

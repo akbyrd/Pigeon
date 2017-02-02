@@ -67,9 +67,6 @@ u8 LogicalToActualIndex(NotificationWindow* state, u8 index); // TODO: Remove?
 void
 Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 {
-	// TODO: Currently a resolution notification will overwrite
-	// a sound notification. Is this the desired design?
-
 	// TODO: Maybe have a loop iteration counter in the main pump and
 	// use it to prevent infinite notifications from failures?
 
@@ -130,23 +127,44 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	}
 }
 
-void
-NotifyFormat(NotificationWindow* notification, c16* text, u32 errorCode, Error error)
+inline void
+NotifyFormat(NotificationWindow* notification, c16* format, Error error, va_list args)
 {
-	c16 buffer[256] = {};
-	swprintf(buffer, ArrayCount(buffer), L"%s - Error: %d", text, errorCode);
+	c16 buffer[ArrayCount(Notification::text)] = {};
+	_vsnwprintf(buffer, ArrayCount(buffer), format, args);
 
 	Notify(notification, buffer, error);
+}
+
+inline void
+NotifyFormat(NotificationWindow* notification, c16* format, Error error, ...)
+{
+	va_list args;
+	va_start(args, error);
+
+	NotifyFormat(notification, format, error, args);
+
+	va_end(args);
+}
+
+inline void
+NotifyFormat(NotificationWindow* notification, c16* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+
+	NotifyFormat(notification, format, Error::None, args);
+
+	va_end(args);
 }
 
 void
 NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Error::Error, u32 errorCode = GetLastError())
 {
 	u32 uResult = 0;
-	i32 iResult = 0;
 
 	// TODO: Use vs_list?
-	c16 tempBuffer[128] = {};
+	c16 tempBuffer[ArrayCount(Notification::text)] = {};
 	uResult = FormatMessageW(
 		FORMAT_MESSAGE_FROM_SYSTEM,
 		nullptr,
@@ -156,13 +174,10 @@ NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Er
 		ArrayCount(tempBuffer),
 		nullptr
 	);
+	// TODO: Error
 	Assert(uResult > 0);
 
-	c16 errorText[256] = {};
-	iResult = swprintf(errorText, ArrayCount(errorText), L"%s - %s", text, tempBuffer);
-	Assert(iResult != 0);
-
-	Notify(notification, errorText, error);
+	NotifyFormat(notification, L"%s - %s", error, text, tempBuffer);
 }
 
 inline u8
@@ -294,10 +309,10 @@ ProcessNotificationQueue(NotificationWindow* state)
 	}
 
 	// Animate
-	LARGE_INTEGER currentTicksRaw = {};
-	QueryPerformanceCounter(&currentTicksRaw);
+	LARGE_INTEGER win32_currentTicks = {};
+	QueryPerformanceCounter(&win32_currentTicks);
 
-	f64 currentTicks = (f64) currentTicksRaw.QuadPart;
+	f64 currentTicks = (f64) win32_currentTicks.QuadPart;
 
 	switch (state->animState)
 	{
@@ -319,6 +334,8 @@ ProcessNotificationQueue(NotificationWindow* state)
 
 			// TODO: This will not work if the show and hide animations are different or asymmetric
 			f64 normalizedTimeInState = (currentTicks - state->animStartTick) / state->animHideTicks;
+			if (normalizedTimeInState > 1) normalizedTimeInState = 1;
+
 			state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
 
 			// TODO: This will overshoot by an amount based on the animation step duration
@@ -501,10 +518,11 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				{
 					changed = false;
 
-					LARGE_INTEGER currentTicksRaw = {};
-					success = QueryPerformanceCounter(&currentTicksRaw);
+					LARGE_INTEGER win32_currentTicks = {};
+					QueryPerformanceCounter(&win32_currentTicks);
 
-					f64 currentTicks = (f64) currentTicksRaw.QuadPart;
+					f64 currentTicks = (f64) win32_currentTicks.QuadPart;
+
 					f64 animTicks = currentTicks - state->animStartTick;
 
 					f32 newAlpha = 1;
