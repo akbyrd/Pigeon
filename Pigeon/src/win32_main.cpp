@@ -94,7 +94,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		// TODO: BELOW_NORMAL_PRIORITY_CLASS?
 		success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
-		if (!success) NotifyWindowsError(&notification, L"CreateWindowExW failed", Error::Warning);
+		if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
 	}
 
 
