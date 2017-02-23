@@ -164,7 +164,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 	{
 		success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
-		if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed", Error::Warning);
+		//TODO: Once the threading issue is fixed this should be an error, not a warning. The application can't function without the hotkeys.
+		//if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed", Error::Warning);
+		if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed");
 	}
 
 
