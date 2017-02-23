@@ -20,13 +20,15 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	MSG msg = {};
 
 
+	// TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
 	// TODO: Fix bug when starting lots of instance very quickly. Looks like a race condition.
-	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
+	// TODO: Overhaul error handling. e.g. trying to notify when the window fails to be created is not going to go well
+	// TODO: Log failures
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon sounds
 	// TODO: SetProcessDPIAware?
-	// TODO: Log failures
 	// Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
+	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 
 	// TODO: Hotkey to restart
 	// TODO: Refactor animation stuff
@@ -47,8 +49,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		f64 tickFrequency = (f64) win32_tickFrequency.QuadPart;
 
-		notification.windowMinWidth   = 200; // TODO: Implement
-		notification.windowMaxWidth   = 600; // TODO: Implement
+		notification.windowMinWidth   = 200;
+		notification.windowMaxWidth   = 600;
 		notification.windowSize       = {200, 60};
 		notification.windowPosition   = { 50, 60};
 		notification.backgroundColor  = RGBA(16, 16, 16, 242);
@@ -69,6 +71,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Single Instance
+	//TOOD: Namespace?
 	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
 	if (!singleInstanceEvent) NotifyWindowsError(&notification, L"CreateEventW failed");
 
@@ -85,7 +88,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	{
-		// NOTE: Need for audio stuff
+		// NOTE: Need for audio stuff (creates a window internally)
 		hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 		if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
 
@@ -98,7 +101,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// Window
 	{
 		WNDCLASSW windowClass = {};
-		windowClass.style         = 0; // TODO: CS_DROPSHADOW?
+		windowClass.style         = 0; //CS_DROPSHADOW
 		windowClass.lpfnWndProc   = NotificationWndProc;
 		windowClass.cbClsExtra    = 0;
 		windowClass.cbWndExtra    = sizeof(&notification);
@@ -110,6 +113,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
+		//TODO: If a notification occurs and there is no window, is it handled properly?
 		if (classAtom == INVALID_ATOM) NotifyWindowsError(&notification, L"RegisterClassW failed");
 
 		notification.hwnd = CreateWindowExW(
@@ -183,7 +187,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			notification.windowPosition.y += notification.windowSize.cy + 10;
 			UpdateWindowPositionAndSize(&notification);
 
-			// TODO: Only once
 			Notify(&notification, L"There can be only one!", Error::Error);
 		}
 
