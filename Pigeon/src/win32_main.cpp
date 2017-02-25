@@ -24,10 +24,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// TODO: Fix bug when starting lots of instance very quickly. Looks like a race condition.
 	// TODO: Overhaul error handling. e.g. trying to notify when the window fails to be created is not going to go well
 	// TODO: Log failures
+	// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon sounds
 	// TODO: SetProcessDPIAware?
-	// Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
+	// TODO: Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
 	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 
 	// TODO: Hotkey to restart
@@ -80,7 +81,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		success = SetEvent(singleInstanceEvent);
 		if (!success) NotifyWindowsError(&notification, L"SetEvent failed");
 
-		uResult = WaitForSingleObject(singleInstanceEvent, 1000);
+		/* TODO: If 2 threads set the event at the same time, someone isn't getting
+		 * woken up. If the timeout occurs we're not going to be able to register
+		 * for hotkeys.
+		 */
+		//uResult = WaitForSingleObject(singleInstanceEvent, 1000);
+		uResult = WaitForSingleObject(singleInstanceEvent, INFINITE);
 		if (uResult == WAIT_TIMEOUT) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_TIMEOUT");
 		if (uResult == WAIT_FAILED ) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
 	}
@@ -88,7 +94,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	{
-		// NOTE: Need for audio stuff (creates a window internally)
+		// NOTE: Needed for audio stuff (creates a window internally)
 		hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 		if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
 
@@ -164,7 +170,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 	{
 		success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
-		//TODO: Once the threading issue is fixed this should be an error, not a warning. The application can't function without the hotkeys.
+		// TODO: Once the threading issue is fixed this should be an error, not a warning. The application can't function without the hotkeys.
 		//if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed", Error::Warning);
 		if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed");
 	}
@@ -184,7 +190,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				success = UnregisterHotKey(nullptr, hotkeys[i].id);
 				if (!success) NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
 			}
+			// TODO: What if this fails?
 			SetEvent(singleInstanceEvent);
+			//singleInstanceEvent = nullptr;
 
 			notification.windowPosition.y += notification.windowSize.cy + 10;
 			UpdateWindowPositionAndSize(&notification);

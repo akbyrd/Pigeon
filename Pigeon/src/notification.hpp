@@ -64,6 +64,9 @@ struct NotificationWindow
 void ProcessNotificationQueue(NotificationWindow* state);
 u8 LogicalToActualIndex(NotificationWindow* state, u8 index); // TODO: Remove?
 
+/* TODO: Would it be better to refactor the Notify process to be able to
+ * reserve the next spot, fill the buffer, then process the notification?
+ */
 void
 Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 {
@@ -439,7 +442,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			NONCLIENTMETRICSW nonClientMetrics = {};
 			nonClientMetrics.cbSize = sizeof(nonClientMetrics);
 
-			// TODO: Is it worth moving this to a function to linearize the flow?
+			// TODO: Is it worth moving this to a procedure to linearize the flow?
 			success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
 			if (success)
 			{
