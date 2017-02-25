@@ -9,7 +9,9 @@
 #include "audio.hpp"
 #include "video.hpp"
 
-static const c16* GUIDSTR_PIGEON = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
+static const c16* PIGEON_GUID = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
+static const c16* SINGLE_INSTANACE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
+static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process Name";
 
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
@@ -17,11 +19,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	b32 success;
 	u32 uResult;
 	HRESULT hr;
-	MSG msg = {};
 
 
 	// TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
-	// TODO: Fix bug when starting lots of instance very quickly. Looks like a race condition.
 	// TODO: Overhaul error handling. e.g. trying to notify when the window fails to be created is not going to go well
 	// TODO: Log failures
 	// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
@@ -71,39 +71,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	}
 
 
-	// Single Instance
-	//TOOD: Namespace?
-	HANDLE singleInstanceEvent = CreateEventW(nullptr, false, false, GUIDSTR_PIGEON);
-	if (!singleInstanceEvent) NotifyWindowsError(&notification, L"CreateEventW failed");
-
-	if (GetLastError() == ERROR_ALREADY_EXISTS)
-	{
-		success = SetEvent(singleInstanceEvent);
-		if (!success) NotifyWindowsError(&notification, L"SetEvent failed");
-
-		/* TODO: If 2 threads set the event at the same time, someone isn't getting
-		 * woken up. If the timeout occurs we're not going to be able to register
-		 * for hotkeys.
-		 */
-		//uResult = WaitForSingleObject(singleInstanceEvent, 1000);
-		uResult = WaitForSingleObject(singleInstanceEvent, INFINITE);
-		if (uResult == WAIT_TIMEOUT) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_TIMEOUT");
-		if (uResult == WAIT_FAILED ) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
-	}
-
-
-	// Misc
-	{
-		// NOTE: Needed for audio stuff (creates a window internally)
-		hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-		if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
-
-		// TODO: BELOW_NORMAL_PRIORITY_CLASS?
-		success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
-		if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
-	}
-
-
 	// Window
 	{
 		WNDCLASSW windowClass = {};
@@ -119,7 +86,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		//TODO: If a notification occurs and there is no window, is it handled properly?
+		// TODO: If a notification occurs and there is no window, is it handled properly?
 		if (classAtom == INVALID_ATOM) NotifyWindowsError(&notification, L"RegisterClassW failed");
 
 		notification.hwnd = CreateWindowExW(
@@ -138,6 +105,61 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		);
 		// TODO: This and other errors are critical, can't be shown as notification. Need to close the program.
 		if (notification.hwnd == INVALID_HANDLE_VALUE) NotifyWindowsError(&notification, L"CreateWindowExW failed");
+	}
+
+
+	// Single Instance
+	u32 WM_NEWINSTANCE = 0;
+	HANDLE singleInstanceMutex = nullptr;
+	b32 mutexOwned = false;
+	u64 startTime = 0;
+	{
+		HANDLE hProcess = GetCurrentProcess();
+
+		FILETIME win32_startFileTime = {};
+		FILETIME unusued;
+		success = GetProcessTimes(hProcess, &win32_startFileTime, &unusued, &unusued, &unusued);
+		if (!success) NotifyWindowsError(&notification, L"GetProcessTimes failed");
+
+		ULARGE_INTEGER win32_startTime = {};
+		win32_startTime.LowPart  = win32_startFileTime.dwLowDateTime;
+		win32_startTime.HighPart = win32_startFileTime.dwHighDateTime;
+
+		startTime = win32_startTime.QuadPart;
+
+		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
+
+		// TOOD: Namespace?
+		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANACE_MUTEX_NAME);
+		if (!singleInstanceMutex) NotifyWindowsError(&notification, L"CreateMutex failed");
+
+		if (GetLastError() == ERROR_ALREADY_EXISTS)
+		{
+			// TODO: Better to enumerate processes instead of broadcasting
+			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, 0);
+			if (!success) NotifyWindowsError(&notification, L"PostMessage failed");
+
+			// TODO: Not handling messages while waiting
+			// TODO: Put a timer on this since PostMessage can fail
+			uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
+			if (uResult == WAIT_FAILED   ) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
+			if (uResult == WAIT_ABANDONED) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_ABANDON", Error::Warning);
+		}
+
+		// TODO: Can be true when it should not be
+		mutexOwned = true;
+	}
+
+
+	// Misc
+	{
+		// NOTE: Needed for audio stuff (creates a window internally)
+		hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
+		if (FAILED(hr)) NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
+
+		// TODO: BELOW_NORMAL_PRIORITY_CLASS?
+		success = SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+		if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
 	}
 
 
@@ -170,41 +192,62 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 	{
 		success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
-		// TODO: Once the threading issue is fixed this should be an error, not a warning. The application can't function without the hotkeys.
-		//if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed", Error::Warning);
 		if (!success) NotifyWindowsError(&notification, L"RegisterHotKey failed");
 	}
 
 
 	// Message pump
+	MSG msg = {};
 	b32 quit = false;
+
 	while (!quit)
 	{
-		// TODO: I'm unsure if this releases on ALL possible messages
-		uResult = MsgWaitForMultipleObjects(1, &singleInstanceEvent, false, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
-		if (uResult == WAIT_FAILED  ) Notify(&notification, L"MsgWaitForMultipleObjects WAIT_FAILED", Error::Error);
-		if (uResult == WAIT_OBJECT_0)
+		i32 iResult = GetMessageW(&msg, nullptr, 0, 0);
+		if (iResult == -1)
 		{
-			for (u8 i = 0; i < ArrayCount(hotkeys); i++)
-			{
-				success = UnregisterHotKey(nullptr, hotkeys[i].id);
-				if (!success) NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
-			}
-			// TODO: What if this fails?
-			SetEvent(singleInstanceEvent);
-			//singleInstanceEvent = nullptr;
-
-			notification.windowPosition.y += notification.windowSize.cy + 10;
-			UpdateWindowPositionAndSize(&notification);
-
-			Notify(&notification, L"There can be only one!", Error::Error);
+			// TODO: Log error
+			break;
 		}
 
-		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessageW(&msg);
+		TranslateMessage(&msg);
+		DispatchMessageW(&msg);
 
+		if (msg.message == WM_NEWINSTANCE)
+		{
+			u64 newProcessStartTime = msg.wParam;
+
+			// TODO: This will lead to a hang if 2 processes have the exact same start time
+			if (newProcessStartTime > startTime)
+			{
+				if (mutexOwned)
+				{
+					bool unregistered = true;
+					for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+					{
+						success = UnregisterHotKey(nullptr, hotkeys[i].id);
+						if (!success) NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
+
+						unregistered &= success;
+					}
+
+					if (unregistered)
+					{
+						mutexOwned = false;
+
+						success = ReleaseMutex(singleInstanceMutex);
+						if (!success) NotifyWindowsError(&notification, L"ReleaseMutex failed", Error::Warning);
+					}
+				}
+
+				notification.windowPosition.y += notification.windowSize.cy + 10;
+				UpdateWindowPositionAndSize(&notification);
+
+				// TODO: We'll never see the above notifications
+				Notify(&notification, L"There can be only one!", Error::Error);
+			}
+		}
+		else
+		{
 			switch (msg.message)
 			{
 				case WM_HOTKEY:
@@ -246,11 +289,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					quit = true;
 					break;
 
-				/* TODO: When the machine wakes up from sleep it looks like QueryPerformanceCounter
-				 * starts back over. This causes animations to break because they thing they have
-				 * an extremely long period of time left. The result is a notification flashing in
-				 * and out rapidly.
-				 */
 				// Expected messages
 				case WM_TIMER:
 				case WM_PROCESSQUEUE:
