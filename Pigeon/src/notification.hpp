@@ -22,6 +22,7 @@ struct Notification
 	c16   text[256];
 };
 
+// TODO: Rename to NotificationWindowState
 struct NotificationWindow
 {
 	Notification queue[4]          = {};
@@ -29,6 +30,7 @@ struct NotificationWindow
 	u8           queueCount        = 0;
 
 	b32          isDirty           = false;
+	// TODO: Rename to AnimPhase
 	AnimState    animState         = AnimState::Hidden;
 	f64          animStartTick     = 0;
 	f64          animShowTicks     = 0;
@@ -73,9 +75,6 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	// TODO: Maybe have a loop iteration counter in the main pump and
 	// use it to prevent infinite notifications from failures?
 
-	// TODO: Sort out naming convention. i.e. Notification vs Message
-
-	// TODO: Error pigeon sound
 	// TODO: Line on notification indicating queue count (colored if warning/error exists?)
 
 	// Supercede existing non-error notifications

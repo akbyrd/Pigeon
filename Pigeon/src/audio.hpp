@@ -4,7 +4,19 @@
 
 #include "IPolicyConfig.h"
 
-// NOTE: CoInitialize is assumed to have been called.
+inline b32
+InitializeAudio(NotificationWindow* notification)
+{
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr))
+	{
+		NotifyWindowsError(notification, L"CoInitializeEx failed", Error::Error, hr);
+		return false;
+	}
+
+	return true;
+}
+
 inline b32
 CycleDefaultAudioDevice(NotificationWindow* notification)
 {
@@ -139,4 +151,11 @@ OpenAudioPlaybackDevicesWindow()
 	if (result < 32) return false;
 
 	return true;
+}
+
+inline void
+TeardownAudio()
+{
+	// TODO: This can enter a modal loop and dispatch messages. Understand the implications of this.
+	CoUninitialize();
 }
