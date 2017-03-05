@@ -13,18 +13,6 @@ static const c16* PIGEON_GUID = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 static const c16* SINGLE_INSTANACE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
 static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process Name";
 
-struct Hotkey
-{
-	i32 id;
-	u32 modifier;
-	u32 key;
-	b32 (*execute)(NotificationWindow*);
-
-	b32 registered = false;
-};
-
-b32 ReleaseHotkeys(NotificationWindow*, Hotkey*, u32, HANDLE);
-
 int CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
@@ -77,39 +65,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
 
 
-	// Notification
-	NotificationWindow notification = {};
-	{
-		// NOTE: QPC and QPF are documented as not being able to fail on XP+
-		LARGE_INTEGER win32_tickFrequency = {};
-		QueryPerformanceFrequency(&win32_tickFrequency);
-
-		f64 tickFrequency = (f64) win32_tickFrequency.QuadPart;
-
-		notification.windowMinWidth   = 200;
-		notification.windowMaxWidth   = 600;
-		notification.windowSize       = {200, 60};
-		notification.windowPosition   = { 50, 60};
-		notification.backgroundColor  = RGBA(16, 16, 16, 242);
-		notification.textColorNormal  = RGB(255, 255, 255);
-		notification.textColorError   = RGB(255, 0, 0);
-		notification.textColorWarning = RGB(255, 255, 0);
-		notification.textPadding      = 20;
-		notification.animShowTicks    = 0.1 * tickFrequency;
-		notification.animIdleTicks    = 2.0 * tickFrequency;
-		notification.animHideTicks    = 1.0 * tickFrequency;
-		notification.animUpdateMS     = 1000 / 30;
-		notification.timerID          = 1;
-		notification.tickFrequency    = tickFrequency;
-
-		// DEBUG
-		Notify(&notification, L"Started!");
-	}
-
-
 	// Window
-	// TODO: Rename
-	b32 initSuccess = [&]()
+	auto CreateNotificationWindow = [](NotificationWindow& notification, HINSTANCE hInstance)
 	{
 		WNDCLASSW windowClass = {};
 		windowClass.style         = 0; //CS_DROPSHADOW
@@ -146,12 +103,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		);
 		if (notification.hwnd == INVALID_HANDLE_VALUE)
 		{
+			notification.hwnd = nullptr;
 			NotifyWindowsError(&notification, L"CreateWindowExW failed");
 			return false;
 		}
 
 		return true;
-	}();
+	};
 
 
 	/* TODO: Still have some failure cases
@@ -161,10 +119,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	 *   message is posted)
 	 */
 	// Single Instance
-	u64    startTime           = 0;
-	u32    WM_NEWINSTANCE      = 0;
-	HANDLE singleInstanceMutex = nullptr;
-	initSuccess = initSuccess && [&]()
+	auto EnforceSingleInstance = [](NotificationWindow& notification, u64& startTime, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex)
 	{
 		HANDLE hProcess = GetCurrentProcess();
 
@@ -222,174 +177,236 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		}
 
 		return true;
-	}();
-
-
-	// Misc
-	initSuccess = initSuccess && [&]()
-	{
-		b32 success = InitializeAudio(&notification);
-		if (!success) return false;
-
-		success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-		if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
-	}();
+	};
 
 
 	// Hotkeys
-	Hotkey hotkeys[] = {
-		{ 0,           0, VK_F5 , &CycleDefaultAudioDevice          },
-		{ 1, MOD_CONTROL, VK_F5 , &OpenAudioPlaybackDevicesWindow   },
-		{ 2,           0, VK_F6 , &CycleRefreshRate                 },
-		{ 3, MOD_CONTROL, VK_F6 , &OpenDisplayAdapterSettingsWindow },
+	struct Hotkey
+	{
+		i32 id;
+		u32 modifier;
+		u32 key;
+		b32 (*execute)(NotificationWindow*);
 
-		#if false
-		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
-		{ 4,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Message", Error::None))    },
-		{ 5,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Warning", Error::Warning)) },
-		{ 6,           0, VK_F12, LAMBDA(Notify(notification, L"DEBUG Error"  , Error::Error))   },
-		#endif
+		b32 registered = false;
 	};
 
-	initSuccess = initSuccess && [&]()
+	auto RegisterHotkeys   = [](NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCount, HANDLE singleInstanceMutex, auto UnregisterHotkeys)
 	{
-		for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+		for (u8 i = 0; i < hotkeyCount; i++)
 		{
 			b32 success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
 			if (!success)
 			{
 				NotifyWindowsError(&notification, L"RegisterHotKey failed");
-				ReleaseHotkeys(&notification, hotkeys, ArrayCount(hotkeys), singleInstanceMutex);
+				UnregisterHotkeys(notification, hotkeys, hotkeyCount, singleInstanceMutex);
 				return false;
 			}
 		}
+	};
+	auto UnregisterHotkeys = [](NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCount, HANDLE singleInstanceMutex)
+	{
+		bool unregisterFailed = false;
+		for (u8 i = 0; i < hotkeyCount; i++)
+		{
+			if (hotkeys[i].registered)
+			{
+				b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
+				if (!success)
+				{
+					unregisterFailed = true;
+					NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
+					continue;
+				}
+
+				hotkeys[i].registered = false;
+			}
+		}
+		if (unregisterFailed) return false;
+
+
+		b32 success = ReleaseMutex(singleInstanceMutex);
+		if (!success)
+		{
+			NotifyWindowsError(&notification, L"ReleaseMutex failed", Error::Warning);
+			return false;
+		}
+
+		singleInstanceMutex = nullptr;
 
 		return true;
-	}();
+	};
+
+
+	// Misc
+	auto Misc = [](NotificationWindow& notification)
+	{
+		b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+		if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
+	};
 
 
 	// Message pump
-	MSG msg = {};
-	b32 quit = false;
-
-	while (!quit)
+	auto MessageLoop = [](NotificationWindow& notification, u64 startTime, u32 WM_NEWINSTANCE, Hotkey* hotkeys, u8 hotkeyCount, HANDLE singleInstanceMutex, auto UnregisterHotkeys)
 	{
-		i32 iResult = GetMessageW(&msg, nullptr, 0, 0);
-		if (iResult == -1)
+		MSG msg = {};
+		b32 quit = false;
+
+		while (!quit)
 		{
-			// TODO: Log error
-			break;
-		}
-
-		// TODO: Handle return values?
-		TranslateMessage(&msg);
-		DispatchMessageW(&msg);
-
-		if (msg.message == WM_NEWINSTANCE)
-		{
-			u64 newProcessStartTime = msg.wParam;
-
-			// TODO: This will lead to a hang if 2 processes have the exact same start time (include Process/ThreadID, highest wins?)
-			if (newProcessStartTime > startTime)
+			i32 iResult = GetMessageW(&msg, nullptr, 0, 0);
+			if (iResult == -1)
 			{
-				if (singleInstanceMutex)
-				{
-					ReleaseHotkeys(&notification, hotkeys, ArrayCount(hotkeys), singleInstanceMutex);
-				}
-
-				notification.windowPosition.y += notification.windowSize.cy + 10;
-				UpdateWindowPositionAndSize(&notification);
-
-				Notify(&notification, L"There can be only one!", Error::Error);
+				// TODO: Log error
+				break;
 			}
-		}
-		else
-		{
-			switch (msg.message)
+
+			// TODO: Handle return values?
+			TranslateMessage(&msg);
+			DispatchMessageW(&msg);
+
+			if (msg.message == WM_NEWINSTANCE)
 			{
-				case WM_HOTKEY:
+				u64 newProcessStartTime = msg.wParam;
+
+				// TODO: This will lead to a hang if 2 processes have the exact same start time (include Process/ThreadID, highest wins?)
+				if (newProcessStartTime > startTime)
 				{
-					for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+					if (singleInstanceMutex)
 					{
-						if (msg.wParam == hotkeys[i].id)
-						{
-							hotkeys[i].execute(&notification);
-							break;
-						}
+						UnregisterHotkeys(notification, hotkeys, hotkeyCount, singleInstanceMutex);
 					}
-					break;
+
+					notification.windowPosition.y += notification.windowSize.cy + 10;
+					UpdateWindowPositionAndSize(&notification);
+
+					Notify(&notification, L"There can be only one!", Error::Error);
 				}
-
-				case WM_QUIT:
-					quit = true;
-					break;
-
-				// Expected messages
-				case WM_TIMER:
-				case WM_PROCESSQUEUE:
-					break;
-
-				// TODO: WM_FONTCHANGE (29) - when installing fonts
-				// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
-				// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
-				default:
-					if (msg.message < WM_PROCESSQUEUE)
-						NotifyFormat(&notification, L"Unexpected message: %d\n", Error::Warning, msg.message);
-					break;
 			}
-		}
-	}
-
-
-	// Cleanup
-	TeardownAudio();
-
-
-	// TODO: Show remaining warnings / errors in a dialog?
-
-	// Leak all the things!
-	// (Windows destroys everything automatically)
-
-	// NOTE: Handles are closed when process terminates.
-	// Events are destroyed when the last handle is destroyed.
-
-	// TODO: Can the mutex be abandoned before hotkeys are unregistered?
-
-	// TODO: This is wrong
-	return LOWORD(msg.wParam);
-}
-
-b32
-ReleaseHotkeys(NotificationWindow* notification, Hotkey* hotkeys, u32 hotkeyCount, HANDLE mutex)
-{
-	bool unregisterFailed = false;
-	for (u8 i = 0; i < hotkeyCount; i++)
-	{
-		if (hotkeys[i].registered)
-		{
-			b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
-			if (!success)
+			else
 			{
-				unregisterFailed = true;
-				NotifyWindowsError(notification, L"UnregisterHotKey failed", Error::Warning);
-				continue;
-			}
+				switch (msg.message)
+				{
+					case WM_HOTKEY:
+					{
+						for (u8 i = 0; i < hotkeyCount; i++)
+						{
+							if (msg.wParam == hotkeys[i].id)
+							{
+								hotkeys[i].execute(&notification);
+								break;
+							}
+						}
+						break;
+					}
 
-			hotkeys[i].registered = false;
+					case WM_QUIT:
+						quit = true;
+						break;
+
+					// Expected messages
+					case WM_TIMER:
+					case WM_PROCESSQUEUE:
+						break;
+
+					// TODO: WM_FONTCHANGE (29) - when installing fonts
+					// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
+					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
+					default:
+						if (msg.message < WM_PROCESSQUEUE)
+							NotifyFormat(&notification, L"Unexpected message: %d\n", Error::Warning, msg.message);
+						break;
+				}
+			}
+		}
+
+		// TODO: This is wrong
+		return LOWORD(msg.wParam);
+	};
+
+
+	// Behavior
+	int returnValue = -1;
+	{
+		NotificationWindow notification = {};
+		{
+			// NOTE: QPC and QPF are documented as not being able to fail on XP+
+			LARGE_INTEGER win32_tickFrequency = {};
+			QueryPerformanceFrequency(&win32_tickFrequency);
+			f64 tickFrequency = (f64) win32_tickFrequency.QuadPart;
+
+			notification.windowMinWidth   = 200;
+			notification.windowMaxWidth   = 600;
+			notification.windowSize       = {200, 60};
+			notification.windowPosition   = { 50, 60};
+			notification.backgroundColor  = RGBA(16, 16, 16, 242);
+			notification.textColorNormal  = RGB(255, 255, 255);
+			notification.textColorError   = RGB(255, 0, 0);
+			notification.textColorWarning = RGB(255, 255, 0);
+			notification.textPadding      = 20;
+			notification.animShowTicks    = 0.1 * tickFrequency;
+			notification.animIdleTicks    = 2.0 * tickFrequency;
+			notification.animHideTicks    = 1.0 * tickFrequency;
+			notification.animUpdateMS     = 1000 / 30;
+			notification.timerID          = 1;
+			notification.tickFrequency    = tickFrequency;
+
+			// DEBUG
+			Notify(&notification, L"Started!");
+		}
+
+
+		// Hotkeys
+		Hotkey hotkeys[] = {
+			{ 0,           0, VK_F5 , &CycleDefaultAudioDevice          },
+			{ 1, MOD_CONTROL, VK_F5 , &OpenAudioPlaybackDevicesWindow   },
+			{ 2,           0, VK_F6 , &CycleRefreshRate                 },
+			{ 3, MOD_CONTROL, VK_F6 , &OpenDisplayAdapterSettingsWindow },
+
+			#if false
+			#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
+			{ 4,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Error::None))    },
+			{ 5,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Error::Warning)) },
+			{ 6,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Error::Error))   },
+			{ 7,           0, VK_F12, &RestartApplication                                            },
+			#endif
+		};
+
+
+		if (CreateNotificationWindow(notification, hInstance))
+		{
+			u64    startTime           = 0;
+			u32    WM_NEWINSTANCE      = 0;
+			HANDLE singleInstanceMutex = nullptr;
+
+			if (EnforceSingleInstance(notification, startTime, WM_NEWINSTANCE, singleInstanceMutex))
+			{
+				if (RegisterHotkeys(notification, hotkeys, ArrayCount(hotkeys), singleInstanceMutex, UnregisterHotkeys))
+				{
+					if (InitializeAudio(&notification))
+					{
+						Misc(notification);
+						returnValue = MessageLoop(notification, startTime, WM_NEWINSTANCE, hotkeys, ArrayCount(hotkeys), singleInstanceMutex, UnregisterHotkeys);
+					}
+					TeardownAudio();
+				}
+			}
 		}
 	}
-	if (unregisterFailed) return false;
 
 
-	b32 success = ReleaseMutex(mutex);
-	if (!success)
+	// Shutdown
 	{
-		NotifyWindowsError(notification, L"ReleaseMutex failed", Error::Warning);
-		return false;
+		// TODO: Show remaining warnings / errors in a dialog?
+
+		// Leak all the things!
+		// (Windows destroys everything automatically)
+
+		// NOTE: Handles are closed when process terminates.
+		// Events are destroyed when the last handle is destroyed.
+
+		// TODO: Can the mutex be abandoned before hotkeys are unregistered?
+
+		return returnValue;
 	}
-
-	mutex = nullptr;
-
-
-	return true;
 }
