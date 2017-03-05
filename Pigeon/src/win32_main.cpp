@@ -18,6 +18,9 @@ struct Hotkey
 	i32 id;
 	u32 modifier;
 	u32 key;
+	b32 (*execute)(NotificationWindow*);
+
+	b32 registered = false;
 };
 
 b32 ReleaseHotkeys(NotificationWindow*, Hotkey*, u32, HANDLE);
@@ -234,23 +237,18 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Hotkeys
-	const i32           cycleAudioDeviceHotkeyID = 0;
-	const i32        openPlaybackDevicesHotkeyID = 1;
-	const i32           cycleRefreshRateHotkeyID = 2;
-	const i32 openDisplayAdapterSettingsHotkeyID = 3;
-	const i32              debug_MessageHotkeyID = 4;
-	const i32              debug_WarningHotkeyID = 5;
-	const i32                debug_ErrorHotkeyID = 6;
-
-	//TODO: Probably just use lambdas
 	Hotkey hotkeys[] = {
-		{           cycleAudioDeviceHotkeyID,           0, VK_F5  },
-		{        openPlaybackDevicesHotkeyID, MOD_CONTROL, VK_F5  },
-		{           cycleRefreshRateHotkeyID,           0, VK_F6  },
-		{ openDisplayAdapterSettingsHotkeyID, MOD_CONTROL, VK_F6  },
-		{              debug_MessageHotkeyID,           0, VK_F10 },
-		{              debug_WarningHotkeyID,           0, VK_F11 },
-		{                debug_ErrorHotkeyID,           0, VK_F12 },
+		{ 0,           0, VK_F5 , &CycleDefaultAudioDevice          },
+		{ 1, MOD_CONTROL, VK_F5 , &OpenAudioPlaybackDevicesWindow   },
+		{ 2,           0, VK_F6 , &CycleRefreshRate                 },
+		{ 3, MOD_CONTROL, VK_F6 , &OpenDisplayAdapterSettingsWindow },
+
+		#if false
+		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
+		{ 4,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Message", Error::None))    },
+		{ 5,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Warning", Error::Warning)) },
+		{ 6,           0, VK_F12, LAMBDA(Notify(notification, L"DEBUG Error"  , Error::Error))   },
+		#endif
 	};
 
 	initSuccess = initSuccess && [&]()
@@ -311,35 +309,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			{
 				case WM_HOTKEY:
 				{
-					switch (msg.wParam)
+					for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 					{
-						case cycleAudioDeviceHotkeyID:
-							CycleDefaultAudioDevice(&notification);
+						if (msg.wParam == hotkeys[i].id)
+						{
+							hotkeys[i].execute(&notification);
 							break;
-
-						case openPlaybackDevicesHotkeyID:
-							OpenAudioPlaybackDevicesWindow();
-							break;
-
-						case cycleRefreshRateHotkeyID:
-							CycleRefreshRate(&notification);
-							break;
-
-						case openDisplayAdapterSettingsHotkeyID:
-							OpenDisplayAdapterSettingsWindow();
-							break;
-
-						case debug_MessageHotkeyID:
-							Notify(&notification, L"DEBUG Message", Error::None);
-							break;
-
-						case debug_WarningHotkeyID:
-							Notify(&notification, L"DEBUG Warning", Error::Warning);
-							break;
-
-						case debug_ErrorHotkeyID:
-							Notify(&notification, L"DEBUG Error", Error::Error);
-							break;
+						}
 					}
 					break;
 				}
@@ -386,15 +362,24 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 b32
 ReleaseHotkeys(NotificationWindow* notification, Hotkey* hotkeys, u32 hotkeyCount, HANDLE mutex)
 {
+	bool unregisterFailed = false;
 	for (u8 i = 0; i < hotkeyCount; i++)
 	{
-		b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
-		if (!success)
+		if (hotkeys[i].registered)
 		{
-			NotifyWindowsError(notification, L"UnregisterHotKey failed", Error::Warning);
-			return false;
+			b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
+			if (!success)
+			{
+				unregisterFailed = true;
+				NotifyWindowsError(notification, L"UnregisterHotKey failed", Error::Warning);
+				continue;
+			}
+
+			hotkeys[i].registered = false;
 		}
 	}
+	if (unregisterFailed) return false;
+
 
 	b32 success = ReleaseMutex(mutex);
 	if (!success)
@@ -404,6 +389,7 @@ ReleaseHotkeys(NotificationWindow* notification, Hotkey* hotkeys, u32 hotkeyCoun
 	}
 
 	mutex = nullptr;
+
 
 	return true;
 }

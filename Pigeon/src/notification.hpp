@@ -22,7 +22,6 @@ struct Notification
 	c16   text[256];
 };
 
-// TODO: Rename to NotificationWindowState
 struct NotificationWindow
 {
 	Notification queue[4]          = {};

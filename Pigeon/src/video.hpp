@@ -1,4 +1,4 @@
-inline bool
+inline b32
 AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 {
 	return lhs->dmPelsWidth          == rhs->dmPelsWidth
@@ -11,7 +11,7 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 }
 
 // NOTE: CoInitialize is assumed to have been called.
-inline bool
+inline b32
 CycleRefreshRate(NotificationWindow* notification)
 {
 	// Get current display settings
@@ -74,8 +74,8 @@ CycleRefreshRate(NotificationWindow* notification)
 	return true;
 }
 
-inline bool
-OpenDisplayAdapterSettingsWindow()
+inline b32
+OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 {
 	c8 commandLine[MAX_PATH + 256] = "\"";
 	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);

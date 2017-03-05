@@ -128,8 +128,8 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	return true;
 }
 
-inline bool
-OpenAudioPlaybackDevicesWindow()
+inline b32
+OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
 {
 	c8 commandLine[MAX_PATH + 256] = "\"";
 	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
