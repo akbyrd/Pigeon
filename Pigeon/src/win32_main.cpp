@@ -21,14 +21,29 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	HRESULT hr;
 
 
+	/* TODO: Overhaul error handling
+	 * - Option 1: Nested ifs, inline
+	 *    Pros: 'simple'
+	 *    Cons: Harder to read, separates error location and handling
+	 * 
+	 * - Option 2: Nested ifs, functions
+	 *    Pros: Keeps error location somewhat closer to occurrence location
+	 *    Cons: Harder to read, jumping back and forth through (use-once) functions
+	 * 
+	 * - Option 3: State booleans
+	 *    Pros: Keeps code linear
+	 *    Cons: Maybe harder to follow? Combinatorial state to keep in head
+	 * 
+	 * - Option 4: Stage array or boolean
+	 *    Pros: Keeps code linear; non-combinatorial
+	 *    Cons: Maybe harder to follow than nested ifs
+	 */
+
 	// TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
-	// TODO: Overhaul error handling. e.g. trying to notify when the window fails to be created is not going to go well
-	// TODO: Log failures
 	// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon sounds
 	// TODO: SetProcessDPIAware?
-	// TODO: Using gotos is a pretty bad idea. It skips initialization of local variables and they'll be filled with garbage.
 	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 
 	// TODO: Hotkey to restart
@@ -86,7 +101,6 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		// TODO: If a notification occurs and there is no window, is it handled properly?
 		if (classAtom == INVALID_ATOM) NotifyWindowsError(&notification, L"RegisterClassW failed");
 
 		notification.hwnd = CreateWindowExW(
@@ -103,11 +117,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			hInstance,
 			&notification
 		);
-		// TODO: This and other errors are critical, can't be shown as notification. Need to close the program.
 		if (notification.hwnd == INVALID_HANDLE_VALUE) NotifyWindowsError(&notification, L"CreateWindowExW failed");
 	}
 
 
+	/* TODO: Still have some failure cases
+	 * - If an older process reaches the wait after a newer process it's going to get stuck there.
+	 * - If a newer process posts a message before an older process creates its window and the
+	 *   older process takes the acquires the mutex from an even older process it will hand (until
+	 *   a new message is posted)
+	 */
 	// Single Instance
 	u32 WM_NEWINSTANCE = 0;
 	HANDLE singleInstanceMutex = nullptr;
@@ -216,12 +235,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{
 			u64 newProcessStartTime = msg.wParam;
 
-			// TODO: This will lead to a hang if 2 processes have the exact same start time
+			// TODO: This will lead to a hang if 2 processes have the exact same start time (include Process/ThreadID, highest wins?)
 			if (newProcessStartTime > startTime)
 			{
 				if (mutexOwned)
 				{
-					bool unregistered = true;
+					b32 unregistered = true;
 					for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 					{
 						success = UnregisterHotKey(nullptr, hotkeys[i].id);

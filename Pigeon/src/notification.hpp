@@ -134,7 +134,7 @@ inline void
 NotifyFormat(NotificationWindow* notification, c16* format, Error error, va_list args)
 {
 	c16 buffer[ArrayCount(Notification::text)] = {};
-	_vsnwprintf(buffer, ArrayCount(buffer), format, args);
+	_vsnwprintf_s(buffer, ArrayCount(buffer), format, args);
 
 	Notify(notification, buffer, error);
 }
