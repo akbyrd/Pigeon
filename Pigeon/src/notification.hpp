@@ -9,6 +9,7 @@ enum struct AnimState
 	Hidden
 };
 
+// TODO: Rename to severity
 enum struct Error
 {
 	None,
@@ -181,11 +182,12 @@ NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Er
 	NotifyFormat(notification, L"%s - %s", error, text, tempBuffer);
 }
 
+// TODO: Implement a formal circular buffer, overload operator[], and remove this function
 inline u8
 LogicalToActualIndex(NotificationWindow* state, u8 index)
 {
 	Assert(index <= state->queueCount);
-	//TODO: Assert ArrayCount(state->queue) is a power of 2
+	// TODO: Assert ArrayCount(state->queue) is a power of 2
 
 	u8 result = (state->queueStart + index) & (ArrayCount(state->queue) - 1);
 	return result;
@@ -625,7 +627,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						{
 							if (state->queue[state->queueStart].error == Error::Error)
 							{
-								PostQuitMessage(2);
+								PostQuitMessage(-2);
 							}
 							else
 							{

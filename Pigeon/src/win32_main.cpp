@@ -35,7 +35,7 @@ struct Hotkey
 b32
 Initialize(InitPhase& phase,
            NotificationWindow& notification, HINSTANCE hInstance,
-           u64& startTime, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex,
+           u64& startTime, u32& processID, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex,
            Hotkey* hotkeys, u8 hotkeyCount)
 {
 	//Create window
@@ -110,6 +110,8 @@ Initialize(InitPhase& phase,
 
 		startTime = win32_startTime.QuadPart;
 
+		processID = GetProcessId(hProcess);
+
 		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
 		if (WM_NEWINSTANCE == 0)
 		{
@@ -128,7 +130,7 @@ Initialize(InitPhase& phase,
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			// TODO: Better to enumerate processes instead of broadcasting
-			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, 0);
+			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, processID);
 			if (!success)
 			{
 				NotifyWindowsError(&notification, L"PostMessage failed");
@@ -167,6 +169,8 @@ Initialize(InitPhase& phase,
 
 				return false;
 			}
+
+			hotkeys[i].registered = true;
 		}
 
 		phase = InitPhase::HotkeysRegistered;
@@ -220,24 +224,25 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 };
 
 
-int CALLBACK
+i32 CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
 	// TODO: Finish refactoring error handling.
 
 	// TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
+	// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
 	// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
+	// TODO: SetProcessDPIAware?
+
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon SFX
-	// TODO: SetProcessDPIAware?
-	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 	// TODO: Decouple errors and application closing
 	// TODO: FormatMessage is not always giving good string translations
 
 	// TODO: Hotkey to restart
 	// TODO: Refactor animation stuff
+	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
 	// TODO: Sound doesn't play on most devices when cycling audio devices
-	// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
 	// TODO: Integrate volume ducking?
 	// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
 	// TODO: Auto-detect headset being turned on/off
@@ -288,50 +293,49 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	};
 
 
-	//Initialize
+	// Initialize
 	InitPhase phase = InitPhase::None;
 
 	u64    startTime           = 0;
+	u32    processID           = 0;
 	u32    WM_NEWINSTANCE      = 0;
 	HANDLE singleInstanceMutex = nullptr;
 
 	Initialize(phase,
 		notification, hInstance,
-		startTime, WM_NEWINSTANCE, singleInstanceMutex,
+		startTime, processID, WM_NEWINSTANCE, singleInstanceMutex,
 		hotkeys, ArrayCount(hotkeys)
 	);
 
 
-	//Misc
+	// Misc
 	b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 	if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
 
 
-	//Message loop
+	// Message loop
 	int returnValue = -1;
+	if (phase >= InitPhase::WindowCreated)
 	{
 		MSG msg = {};
 		b32 quit = false;
 
 		while (!quit)
 		{
-			i32 iResult = GetMessageW(&msg, nullptr, 0, 0);
-			if (iResult == -1)
-			{
-				// TODO: Log error
-				break;
-			}
+			// NOTE: Unfiltered GetMessage won't fail
+			// https://blogs.msdn.microsoft.com/oldnewthing/20130322-00/?p=4873
+			GetMessageW(&msg, nullptr, 0, 0);
 
-			// TODO: Handle return values?
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 
 			if (msg.message == WM_NEWINSTANCE)
 			{
 				u64 newProcessStartTime = msg.wParam;
+				u32 newProcessID        = (u32) msg.lParam;
 
-				// TODO: This will lead to a hang if 2 processes have the exact same start time (include Process/ThreadID, highest wins?)
-				if (newProcessStartTime > startTime)
+				if (newProcessStartTime > startTime
+				 || (newProcessStartTime == startTime && newProcessID > processID))
 				{
 					if (singleInstanceMutex)
 					{
@@ -363,18 +367,17 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 				case WM_QUIT:
 					quit = true;
-					// TODO: This is wrong
-					returnValue = LOWORD(msg.wParam);
+					returnValue = (i32) msg.wParam;
 					break;
 
-					// Expected messages
+				// Expected messages
 				case WM_TIMER:
 				case WM_PROCESSQUEUE:
 					break;
 
-					// TODO: WM_FONTCHANGE (29) - when installing fonts
-					// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
-					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
+				// TODO: WM_FONTCHANGE (29) - when installing fonts
+				// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
+				// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
 				default:
 					if (msg.message < WM_PROCESSQUEUE)
 						NotifyFormat(&notification, L"Unexpected message: %d\n", Error::Warning, msg.message);
@@ -389,7 +392,22 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	if (phase >= InitPhase::SystemsInitialized)
 		TeardownAudio();
 
-	// TODO: Show remaining warnings / errors in a dialog?
+	// Show remaining errors
+	for (u8 i = 0; i < notification.queueCount; i++)
+	{
+		u8 actualIndex = LogicalToActualIndex(&notification, i);
+		Notification note = notification.queue[actualIndex];
+
+		if (note.error == Error::Error)
+		{
+			/* NOTE: This will block until Ok is clicked, but that's ok because it
+			 * only happens when window creation failed and we don't hold the mutex.
+			 */
+			// TODO: Ocassionally getting this with "There can be only one!" if running a shit ton of instances
+			i32 iResult = MessageBoxW(nullptr, note.text, L"Pigeon Error", MB_OK | MB_ICONERROR | MB_SERVICE_NOTIFICATION);
+			if (iResult == 0) {} // TODO: Uh, system log?
+		}
+	}
 
 	// Leak all the things!
 	// (Windows destroys everything automatically)
