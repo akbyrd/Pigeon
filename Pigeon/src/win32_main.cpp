@@ -161,7 +161,7 @@ Initialize(InitPhase& phase,
 			{
 				NotifyWindowsError(&notification, L"RegisterHotKey failed");
 
-				b32 UnregisterHotkeys(NotificationWindow&, Hotkey*, u8, HANDLE);
+				b32 UnregisterHotkeys(NotificationWindow&, Hotkey*, u8, HANDLE&);
 				success = UnregisterHotkeys(notification, hotkeys, hotkeyCount, singleInstanceMutex);
 				if (!success) phase = InitPhase::HotkeysRegistered;
 
