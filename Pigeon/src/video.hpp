@@ -1,13 +1,13 @@
 inline b32
 AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 {
-	return lhs->dmPelsWidth          == rhs->dmPelsWidth
-		&& lhs->dmPelsHeight         == rhs->dmPelsHeight
-		&& lhs->dmBitsPerPel         == rhs->dmBitsPerPel
-		&& lhs->dmDisplayFlags       == rhs->dmDisplayFlags
-		&& lhs->dmPosition.x         == rhs->dmPosition.x
-		&& lhs->dmPosition.y         == rhs->dmPosition.y
-		&& lhs->dmDisplayOrientation == rhs->dmDisplayOrientation;
+	/* NOTE: Only dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags,
+	 * and dmDisplayFrequency are set by EnumDisplaySettings
+	 */
+	return lhs->dmPelsWidth    == rhs->dmPelsWidth
+	    && lhs->dmPelsHeight   == rhs->dmPelsHeight
+	    && lhs->dmBitsPerPel   == rhs->dmBitsPerPel
+	    && lhs->dmDisplayFlags == rhs->dmDisplayFlags;
 }
 
 // NOTE: CoInitialize is assumed to have been called.
@@ -19,8 +19,8 @@ CycleRefreshRate(NotificationWindow* notification)
 	{
 		currentDisplaySettings.dmSize = sizeof(currentDisplaySettings);
 
-		b32 success = EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &currentDisplaySettings);
-		if (!success) return false;
+		// NOTE: This and the Ex variant only fail when iModeNum is out of range
+		EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &currentDisplaySettings);
 	}
 
 
@@ -30,14 +30,21 @@ CycleRefreshRate(NotificationWindow* notification)
 		newDisplaySettings.dmSize = sizeof(newDisplaySettings);
 
 		DEVMODEW displaySettings = {};
-		displaySettings.dmSize = sizeof(newDisplaySettings);
+		displaySettings.dmSize = sizeof(displaySettings);
 
 		bool foundDesiredFrequency = false;
 
-		// TODO: Check all failure modes
+		// NOTE: The OS caches display information when i == 0. Other values use the cache.
 		int i = 0;
 		while (EnumDisplaySettingsExW(nullptr, i++, &displaySettings, EDS_RAWMODE))
 		{
+			u32 requiredFlags = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
+			if (displaySettings.dmFields & requiredFlags != requiredFlags)
+			{
+				Notify(notification, L"EnumDisplaySettingsEx didn't set necessary fields", Error::Warning);
+				continue;
+			}
+
 			if (AreDisplayModesEqualIgnoringFrequency(&displaySettings, &currentDisplaySettings))
 			{
 				if (displaySettings.dmDisplayFrequency < 60) continue;
@@ -65,8 +72,12 @@ CycleRefreshRate(NotificationWindow* notification)
 	{
 		newDisplaySettings.dmFields = DM_DISPLAYFREQUENCY;
 
-		LONG result = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
-		if (result < 0) return false;
+		i32 iResult = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
+		if (iResult != DISP_CHANGE_SUCCESSFUL)
+		{
+			NotifyFormat(notification, L"ChangeDisplaySettings failed: %i", Error::Warning, iResult);
+			return false;
+		}
 
 		NotifyFormat(notification, L"%u Hz", newDisplaySettings.dmDisplayFrequency);
 	}
@@ -77,24 +88,40 @@ CycleRefreshRate(NotificationWindow* notification)
 inline b32
 OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 {
-	c8 commandLine[MAX_PATH + 256] = "\"";
-	u16 endIndex = GetSystemDirectoryA(commandLine+1, ArrayCount(commandLine)-1);
-	if (endIndex == 0 || ++endIndex > ArrayCount(commandLine)) return false;
+	/*  NOTE: The path to rundll32 can't exceed MAX_PATH, we we can never
+	 * overflow the buffer as long as the options being passed in are under the
+	 * extra 256 being allocated so I'm not going to bother checking after
+	 * every operation.
+	 */
+	const u16 commandMaxLength = MAX_PATH + 256;
 
-	// NOTE: Path does not end with a backslash unless the
-	// system directory is the root directory
-	if (commandLine[endIndex-1] != '\\')
-		commandLine[endIndex++] = '\\';
+	c8 commandLine[commandMaxLength] = "\"";
+	u16 commandLength = 1;
+
+	u16 systemDirCount = GetSystemDirectoryA(commandLine+commandLength, commandMaxLength-commandLength);
+	if (systemDirCount == 0)
+	{
+		NotifyWindowsError(notification, L"GetSystemDirectory failed");
+		return false;
+	}
+	commandLength += systemDirCount;
+
+	/* NOTE: Path does not end with a backslash unless the system directory is
+	 * the root directory
+	 */
+	if (commandLine[commandLength-1] != '\\')
+		commandLine[commandLength++] = '\\';
 
 	c8 adapterSettingsCommand[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
-	u16 totalSize = endIndex + ArrayCount(adapterSettingsCommand);
-	if (totalSize > ArrayCount(commandLine)) return false;
-
 	for (u16 i = 0; i < ArrayCount(adapterSettingsCommand); ++i)
-		commandLine[endIndex++] = adapterSettingsCommand[i];
+		commandLine[commandLength++] = adapterSettingsCommand[i];
 
-	u32 result = WinExec(commandLine, SW_NORMAL);
-	if (result < 32) return false;
+	u32 uResult = WinExec(commandLine, SW_NORMAL);
+	if (uResult < 32)
+	{
+		NotifyFormat(notification, L"GetSystemDirectory failed: %u", Error::Warning, uResult);
+		return false;
+	}
 
 	return true;
 }

@@ -179,8 +179,12 @@ Initialize(InitPhase& phase,
 
 	//Initialize systems
 	{
-		b32 success = InitializeAudio(&notification);
-		if (!success) return false;
+		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
+		if (FAILED(hr))
+		{
+			NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
+			return false;
+		}
 
 		phase = InitPhase::SystemsInitialized;
 	}
@@ -237,7 +241,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	// TODO: Pigeon image on startup
 	// TODO: Pigeon SFX
 	// TODO: Decouple errors and application closing
-	// TODO: FormatMessage is not always giving good string translations
+	// TODO: Add a permanent log file
 
 	// TODO: Hotkey to restart
 	// TODO: Refactor animation stuff
@@ -380,7 +384,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
 				default:
 					if (msg.message < WM_PROCESSQUEUE)
-						NotifyFormat(&notification, L"Unexpected message: %d\n", Error::Warning, msg.message);
+						// TODO: Can we translate the message to something convenient like WM_KEYDOWN?
+						NotifyFormat(&notification, L"Unexpected message: %u, w:%llu, l:%lli\n", Error::Warning, msg.message, msg.wParam, msg.lParam);
 					break;
 				}
 			}
@@ -390,7 +395,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Cleanup
 	if (phase >= InitPhase::SystemsInitialized)
-		TeardownAudio();
+		// TODO: This can enter a modal loop and dispatch messages. Understand the implications of this.
+		CoUninitialize();
 
 	// Show remaining errors
 	for (u8 i = 0; i < notification.queueCount; i++)

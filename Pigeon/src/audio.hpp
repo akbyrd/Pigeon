@@ -4,32 +4,20 @@
 
 #include "IPolicyConfig.h"
 
-inline b32
-InitializeAudio(NotificationWindow* notification)
-{
-	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-	if (FAILED(hr))
-	{
-		NotifyWindowsError(notification, L"CoInitializeEx failed", Error::Error, hr);
-		return false;
-	}
-
-	return true;
-}
-
+// NOTE: CoInitialize is assumed to have been called.
 inline b32
 CycleDefaultAudioDevice(NotificationWindow* notification)
 {
 	HRESULT hr;
 
 
-	//Shared
+	// Shared
 	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
 	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	if (FAILED(hr)) return false;
 
 
-	//Get current audio device
+	// Get current audio device
 	CComHeapPtr<c16> currentDefaultDeviceID;
 	{
 		CComPtr<IMMDevice> currentPlaybackDevice;
@@ -41,7 +29,7 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	}
 
 
-	//Find next available audio device
+	// Find next available audio device
 	CComHeapPtr<c16> newDefaultDeviceID;
 	CComPtr<IMMDeviceCollection> deviceCollection;
 	{
@@ -83,7 +71,7 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	}
 
 
-	//Notification
+	// Notification
 	{
 		CComPtr<IMMDevice> device;
 		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
@@ -99,9 +87,6 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
 		if (FAILED(hr)) return false;
 
-		// TODO: I think this will end up reading from freed memory if
-		// the notification is queued. However, normal (non-warning/error)
-		// notifications are currently never queued.
 		Notify(notification, deviceDescription.pwszVal);
 
 		hr = PropVariantClear(&deviceDescription);
@@ -109,7 +94,7 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	}
 
 
-	//Set next audio device
+	// Set next audio device
 	{
 		CComPtr<IPolicyConfig> policyConfig;
 		hr = CoCreateInstance(CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policyConfig));
@@ -151,11 +136,4 @@ OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
 	if (result < 32) return false;
 
 	return true;
-}
-
-inline void
-TeardownAudio()
-{
-	// TODO: This can enter a modal loop and dispatch messages. Understand the implications of this.
-	CoUninitialize();
 }
