@@ -1,7 +1,7 @@
 #define RGBA(r, g, b, a) ((b << 0) | (g << 8) | (r << 16) | (a << 24))
 #define WM_PROCESSQUEUE WM_USER + 0
 
-enum struct AnimState
+enum struct AnimPhase
 {
 	Showing,
 	Shown,
@@ -9,18 +9,17 @@ enum struct AnimState
 	Hidden
 };
 
-// TODO: Rename to severity
-enum struct Error
+enum struct Severity
 {
-	None,
+	Info,
 	Warning,
 	Error
 };
 
 struct Notification
 {
-	Error error;
-	c16   text[256];
+	Severity severity;
+	c16      text[256];
 };
 
 struct NotificationWindow
@@ -30,8 +29,7 @@ struct NotificationWindow
 	u8           queueCount        = 0;
 
 	b32          isDirty           = false;
-	// TODO: Rename to AnimPhase
-	AnimState    animState         = AnimState::Hidden;
+	AnimPhase    animPhase         = AnimPhase::Hidden;
 	f64          animStartTick     = 0;
 	f64          animShowTicks     = 0;
 	f64          animIdleTicks     = 0;
@@ -70,7 +68,7 @@ u8 LogicalToActualIndex(NotificationWindow* state, u8 index); // TODO: Remove?
  * reserve the next spot, fill the buffer, then process the notification?
  */
 void
-Notify(NotificationWindow* state, c16* text, Error error = Error::None)
+Notify(NotificationWindow* state, c16* text, Severity severity = Severity::Info)
 {
 	// TODO: Maybe have a loop iteration counter in the main pump and
 	// use it to prevent infinite notifications from failures?
@@ -81,7 +79,7 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	for (u8 i = 0; i < state->queueCount; i++)
 	{
 		u8 actualIndex = LogicalToActualIndex(state, i);
-		if (state->queue[actualIndex].error == Error::None)
+		if (state->queue[actualIndex].severity == Severity::Info)
 		{
 			for (u8 j = i; j < state->queueCount-1; j++)
 			{
@@ -99,7 +97,7 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	u8 maxQueueCount = ArrayCount(state->queue) - 1;
 	if (state->queueCount == maxQueueCount)
 	{
-		error = Error::Warning;
+		severity = Severity::Warning;
 		text  = L"Queue is overflowing";
 	}
 	else if (state->queueCount > maxQueueCount)
@@ -110,7 +108,7 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 
 	// Queue
 	u8 nextIndex = LogicalToActualIndex(state, state->queueCount);
-	state->queue[nextIndex].error = error;
+	state->queue[nextIndex].severity = severity;
 	StrCpyW(state->queue[nextIndex].text, text);
 	state->queueCount++;
 
@@ -121,8 +119,8 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 	}
 	else
 	{
-		b32 isCurrentUnimportant = state->queue[state->queueStart].error == Error::None;
-		b32 isCurrentHiding = state->animState == AnimState::Hiding || state->animState == AnimState::Hidden;
+		b32 isCurrentUnimportant = state->queue[state->queueStart].severity == Severity::Info;
+		b32 isCurrentHiding = state->animPhase == AnimPhase::Hiding || state->animPhase == AnimPhase::Hidden;
 
 		if (isCurrentUnimportant || isCurrentHiding)
 			ProcessNotificationQueue(state);
@@ -130,21 +128,21 @@ Notify(NotificationWindow* state, c16* text, Error error = Error::None)
 }
 
 inline void
-NotifyFormat(NotificationWindow* notification, c16* format, Error error, va_list args)
+NotifyFormat(NotificationWindow* notification, c16* format, Severity severity, va_list args)
 {
 	c16 buffer[ArrayCount(Notification::text)] = {};
 	_vsnwprintf_s(buffer, ArrayCount(buffer), format, args);
 
-	Notify(notification, buffer, error);
+	Notify(notification, buffer, severity);
 }
 
 inline void
-NotifyFormat(NotificationWindow* notification, c16* format, Error error, ...)
+NotifyFormat(NotificationWindow* notification, c16* format, Severity severity, ...)
 {
 	va_list args;
-	va_start(args, error);
+	va_start(args, severity);
 
-	NotifyFormat(notification, format, error, args);
+	NotifyFormat(notification, format, severity, args);
 
 	va_end(args);
 }
@@ -155,13 +153,13 @@ NotifyFormat(NotificationWindow* notification, c16* format, ...)
 	va_list args;
 	va_start(args, format);
 
-	NotifyFormat(notification, format, Error::None, args);
+	NotifyFormat(notification, format, Severity::Info, args);
 
 	va_end(args);
 }
 
-void
-NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Error::Error, u32 errorCode = GetLastError())
+inline void
+NotifyWindowsError(NotificationWindow* notification, c16* text, Severity severity = Severity::Error, u32 errorCode = GetLastError())
 {
 	u32 uResult = 0;
 
@@ -179,7 +177,7 @@ NotifyWindowsError(NotificationWindow* notification, c16* text, Error error = Er
 	// TODO: Error
 	Assert(uResult > 0);
 
-	NotifyFormat(notification, L"%s - %s", error, text, tempBuffer);
+	NotifyFormat(notification, L"%s - %s", severity, text, tempBuffer);
 }
 
 // TODO: Implement a formal circular buffer, overload operator[], and remove this function
@@ -211,7 +209,7 @@ UpdateWindowPositionAndSize(NotificationWindow* state)
 	return success;
 }
 
-inline void
+void
 ProcessNotificationQueue(NotificationWindow* state)
 {
 	i32 iResult;
@@ -264,11 +262,11 @@ ProcessNotificationQueue(NotificationWindow* state)
 
 	// Text
 	COLORREF newColor = {};
-	switch (notification->error)
+	switch (notification->severity)
 	{
-		case Error::None:    newColor = state->textColorNormal;  break;
-		case Error::Warning: newColor = state->textColorWarning; break;
-		case Error::Error:   newColor = state->textColorError;   break;
+		case Severity::Info:    newColor = state->textColorNormal;  break;
+		case Severity::Warning: newColor = state->textColorWarning; break;
+		case Severity::Error:   newColor = state->textColorError;   break;
 		default: Assert(L"Missing Error case");
 	}
 
@@ -317,23 +315,23 @@ ProcessNotificationQueue(NotificationWindow* state)
 
 	f64 currentTicks = (f64) win32_currentTicks.QuadPart;
 
-	switch (state->animState)
+	switch (state->animPhase)
 	{
-		case AnimState::Showing:
+		case AnimPhase::Showing:
 		{
 			break;
 		}
 
-		case AnimState::Shown:
+		case AnimPhase::Shown:
 		{
 			state->animStartTick = currentTicks;
 
 			break;
 		}
 
-		case AnimState::Hiding:
+		case AnimPhase::Hiding:
 		{
-			state->animState = AnimState::Showing;
+			state->animPhase = AnimPhase::Showing;
 
 			// TODO: This will not work if the show and hide animations are different or asymmetric
 			f64 normalizedTimeInState = (currentTicks - state->animStartTick) / state->animHideTicks;
@@ -350,9 +348,9 @@ ProcessNotificationQueue(NotificationWindow* state)
 			break;
 		}
 
-		case AnimState::Hidden:
+		case AnimPhase::Hidden:
 		{
-			state->animState = AnimState::Showing;
+			state->animPhase = AnimPhase::Showing;
 			state->animStartTick = currentTicks;
 
 			success = ShowWindow(state->hwnd, SW_SHOW);
@@ -368,7 +366,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 			break;
 		}
 
-		default: Assert(L"Missing AnimState case");
+		default: Assert(L"Missing AnimPhase case");
 	}
 
 	// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
@@ -529,9 +527,9 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					f64 animTicks = currentTicks - state->animStartTick;
 
 					f32 newAlpha = 1;
-					switch (state->animState)
+					switch (state->animPhase)
 					{
-						case AnimState::Showing:
+						case AnimPhase::Showing:
 						{
 							alphaChanged = true;
 
@@ -544,7 +542,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								f64 overshootTicks = animTicks - state->animShowTicks;
 
-								state->animState = AnimState::Shown;
+								state->animPhase = AnimPhase::Shown;
 								state->animStartTick = currentTicks - overshootTicks;
 
 								changed = true;
@@ -553,7 +551,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							break;
 						}
 
-						case AnimState::Shown:
+						case AnimPhase::Shown:
 						{
 							if (animTicks < state->animIdleTicks)
 							{
@@ -570,7 +568,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								f64 overshootTicks = animTicks - state->animIdleTicks;
 
-								state->animState = AnimState::Hiding;
+								state->animPhase = AnimPhase::Hiding;
 								state->animStartTick = currentTicks - overshootTicks;
 
 								// TODO: Formalize state changes
@@ -586,12 +584,12 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							break;
 						}
 
-						case AnimState::Hiding:
+						case AnimPhase::Hiding:
 						{
 							// Auto-show next notification
 							b32 isNotificationPending = state->queueCount > 1;
 							b32 allowNextNote = animTicks > .3f * state->animHideTicks;
-							allowNextNote &= state->queue[state->queueStart].error != Error::Error;
+							allowNextNote &= state->queue[state->queueStart].severity != Severity::Error;
 
 							if (allowNextNote && isNotificationPending)
 							{
@@ -613,7 +611,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							{
 								f64 overshootTicks = animTicks - state->animHideTicks;
 
-								state->animState = AnimState::Hidden;
+								state->animPhase = AnimPhase::Hidden;
 								state->animStartTick = currentTicks - overshootTicks;
 
 								changed = true;
@@ -623,9 +621,9 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							break;
 						}
 
-						case AnimState::Hidden:
+						case AnimPhase::Hidden:
 						{
-							if (state->queue[state->queueStart].error == Error::Error)
+							if (state->queue[state->queueStart].severity == Severity::Error)
 							{
 								PostQuitMessage(-2);
 							}
@@ -648,10 +646,10 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							break;
 						}
 
-						default: Assert(L"Missing AnimState case");
+						default: Assert(L"Missing AnimPhase case");
 					}
 
-					bool isHidden = state->animState == AnimState::Hidden;
+					bool isHidden = state->animPhase == AnimPhase::Hidden;
 
 					if (state->isDirty || alphaChanged)
 					{

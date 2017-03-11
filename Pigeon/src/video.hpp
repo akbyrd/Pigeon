@@ -11,7 +11,7 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 }
 
 // NOTE: CoInitialize is assumed to have been called.
-inline b32
+b32
 CycleRefreshRate(NotificationWindow* notification)
 {
 	// Get current display settings
@@ -41,7 +41,7 @@ CycleRefreshRate(NotificationWindow* notification)
 			u32 requiredFlags = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
 			if ((displaySettings.dmFields & requiredFlags) != requiredFlags)
 			{
-				Notify(notification, L"EnumDisplaySettingsEx didn't set necessary fields", Error::Warning);
+				Notify(notification, L"EnumDisplaySettingsEx didn't set necessary fields", Severity::Warning);
 				continue;
 			}
 
@@ -79,7 +79,7 @@ CycleRefreshRate(NotificationWindow* notification)
 		i32 iResult = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
 		if (iResult != DISP_CHANGE_SUCCESSFUL)
 		{
-			NotifyFormat(notification, L"ChangeDisplaySettings failed: %i", Error::Warning, iResult);
+			NotifyFormat(notification, L"ChangeDisplaySettings failed: %i", Severity::Warning, iResult);
 			return false;
 		}
 
@@ -89,7 +89,7 @@ CycleRefreshRate(NotificationWindow* notification)
 	return true;
 }
 
-inline b32
+b32
 OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 {
 	c8 command[] = "rundll32.exe\" display.dll,ShowAdapterSettings";

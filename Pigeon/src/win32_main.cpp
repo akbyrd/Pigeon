@@ -149,7 +149,7 @@ Initialize(InitPhase& phase,
 				return false;
 			}
 
-			if (uResult == WAIT_ABANDONED) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_ABANDON", Error::Warning);
+			if (uResult == WAIT_ABANDONED) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_ABANDON", Severity::Warning);
 		}
 
 		phase = InitPhase::SingleInstanceEnforced;
@@ -184,7 +184,7 @@ Initialize(InitPhase& phase,
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 		if (FAILED(hr))
 		{
-			NotifyWindowsError(&notification, L"CoInitializeEx failed", Error::Error, hr);
+			NotifyWindowsError(&notification, L"CoInitializeEx failed", Severity::Error, hr);
 			return false;
 		}
 
@@ -207,7 +207,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 			if (!success)
 			{
 				unregisterFailed = true;
-				NotifyWindowsError(&notification, L"UnregisterHotKey failed", Error::Warning);
+				NotifyWindowsError(&notification, L"UnregisterHotKey failed", Severity::Warning);
 				continue;
 			}
 
@@ -220,7 +220,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 	b32 success = ReleaseMutex(singleInstanceMutex);
 	if (!success)
 	{
-		NotifyWindowsError(&notification, L"ReleaseMutex failed", Error::Warning);
+		NotifyWindowsError(&notification, L"ReleaseMutex failed", Severity::Warning);
 		return false;
 	}
 
@@ -229,7 +229,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 	return true;
 };
 
-inline b32
+b32
 RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 {
 	/* NOTE: The system directory path can't exceed MAX_PATH, we we can never
@@ -251,7 +251,7 @@ RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 
 	writePointer += StringCopy(writePointer, "\"");
 
-	u16 systemDirCount = GetSystemDirectoryA(writePointer, (u32) maxTotalLength-(writePointer-commandLine));
+	u16 systemDirCount = GetSystemDirectoryA(writePointer, (u32) (maxTotalLength-(writePointer-commandLine)));
 	if (systemDirCount == 0)
 	{
 		NotifyWindowsError(notification, L"GetSystemDirectory failed");
@@ -270,7 +270,7 @@ RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 	u32 uResult = WinExec(commandLine, SW_NORMAL);
 	if (uResult < 32)
 	{
-		NotifyFormat(notification, L"WinExec failed: %u", Error::Warning, uResult);
+		NotifyFormat(notification, L"WinExec failed: %u", Severity::Warning, uResult);
 		return false;
 	}
 
@@ -364,7 +364,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-	if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Error::Warning);
+	if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Severity::Warning);
 
 
 	// Message loop
@@ -399,7 +399,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					notification.windowPosition.y += notification.windowSize.cy + 10;
 					UpdateWindowPositionAndSize(&notification);
 
-					Notify(&notification, L"There can be only one!", Error::Error);
+					Notify(&notification, L"There can be only one!", Severity::Error);
 				}
 			}
 			else
@@ -435,7 +435,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				default:
 					if (msg.message < WM_PROCESSQUEUE)
 						// TODO: Can we translate the message to something convenient like WM_KEYDOWN?
-						NotifyFormat(&notification, L"Unexpected message: %u, w:%llu, l:%lli\n", Error::Warning, msg.message, msg.wParam, msg.lParam);
+						NotifyFormat(&notification, L"Unexpected message: %u, w:%llu, l:%lli\n", Severity::Warning, msg.message, msg.wParam, msg.lParam);
 					break;
 				}
 			}
@@ -454,7 +454,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		u8 actualIndex = LogicalToActualIndex(&notification, i);
 		Notification note = notification.queue[actualIndex];
 
-		if (note.error == Error::Error)
+		if (note.severity == Severity::Error)
 		{
 			/* NOTE: This will block until Ok is clicked, but that's ok because it
 			 * only happens when window creation failed and we don't hold the mutex.
