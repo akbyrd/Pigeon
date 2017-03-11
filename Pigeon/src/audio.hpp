@@ -5,16 +5,24 @@
 #include "IPolicyConfig.h"
 
 // NOTE: CoInitialize is assumed to have been called.
-inline b32
+b32
 CycleDefaultAudioDevice(NotificationWindow* notification)
 {
 	HRESULT hr;
 
 
+	#define NOTIFY_IF_FAILED(string, hr, reaction)                       \
+	if (FAILED(hr))                                                      \
+	{                                                                    \
+		NotifyWindowsError(notification, string, Severity::Warning, hr); \
+		reaction;                                                        \
+	}                                                                    \
+
+
 	// Shared
 	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
 	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
-	if (FAILED(hr)) return false;
+	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
 
 
 	// Get current audio device
@@ -22,10 +30,10 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	{
 		CComPtr<IMMDevice> currentPlaybackDevice;
 		hr = deviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eConsole, &currentPlaybackDevice);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, return false);
 
 		hr = currentPlaybackDevice->GetId(&currentDefaultDeviceID);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"GetId failed", hr, return false);
 	}
 
 
@@ -34,22 +42,22 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	CComPtr<IMMDeviceCollection> deviceCollection;
 	{
 		hr = deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &deviceCollection);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, return false);
 
 		u32 deviceCount;
 		hr = deviceCollection->GetCount(&deviceCount);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"GetCount failed", hr, return false);
 
 		bool useNextDevice = false;
 		for (u32 i = 0; i < deviceCount; ++i)
 		{
 			CComPtr<IMMDevice> device;
 			hr = deviceCollection->Item(i, &device);
-			if (FAILED(hr)) continue;
+			NOTIFY_IF_FAILED(L"Item failed", hr, continue);
 
 			CComHeapPtr<c16> deviceID;
 			hr = device->GetId(&deviceID);
-			if (FAILED(hr)) continue;
+			NOTIFY_IF_FAILED(L"GetId failed", hr, continue);
 
 			if (useNextDevice)
 			{
@@ -75,22 +83,22 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	{
 		CComPtr<IMMDevice> device;
 		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"GetDevice failed", hr, return false);
 
 		CComPtr<IPropertyStore> propertyStore;
 		hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"OpenPropertyStore failed", hr, return false);
 
 		PROPVARIANT deviceDescription;
 		PropVariantInit(&deviceDescription);
 
 		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"GetValue failed", hr, return false);
 
 		Notify(notification, deviceDescription.pwszVal);
 
 		hr = PropVariantClear(&deviceDescription);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, return false);
 	}
 
 
@@ -98,22 +106,26 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	{
 		CComPtr<IPolicyConfig> policyConfig;
 		hr = CoCreateInstance(CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policyConfig));
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eConsole);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
-		if (FAILED(hr)) return false;
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
 
 		b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
-		if (!success) return false;
+		if (!success)
+		{
+			Notify(notification, L"PlaySound failed", Severity::Warning);
+			return false;
+		}
 	}
 
 	return true;
 }
 
-inline b32
+b32
 OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
 {
 	c8 command[] = "control.exe\" /name Microsoft.Sound";
