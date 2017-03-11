@@ -24,57 +24,48 @@ struct Notification
 
 struct NotificationWindow
 {
-	Notification queue[4]          = {};
-	u8           queueStart        = 0;
-	u8           queueCount        = 0;
+	Notification queue[4]         = {};
+	u8           queueStart       = 0;
+	u8           queueCount       = 0;
 
-	b32          isDirty           = false;
-	AnimPhase    animPhase         = AnimPhase::Hidden;
-	f64          animStartTick     = 0;
-	f64          animShowTicks     = 0;
-	f64          animIdleTicks     = 0;
-	f64          animHideTicks     = 0;
-	u16          animUpdateMS      = 0;
-	f64          tickFrequency     = 0;
+	b32          isDirty          = false;
+	AnimPhase    animPhase        = AnimPhase::Hidden;
+	f64          animStartTick    = 0;
+	f64          animShowTicks    = 0;
+	f64          animIdleTicks    = 0;
+	f64          animHideTicks    = 0;
+	u16          animUpdateMS     = 0;
+	f64          tickFrequency    = 0;
 
-	u16          windowMinWidth    = 0;
-	u16          windowMaxWidth    = 0;
-	SIZE         windowSize        = {};
-	POINT        windowPosition    = {};
+	u16          windowMinWidth   = 0;
+	u16          windowMaxWidth   = 0;
+	SIZE         windowSize       = {};
+	POINT        windowPosition   = {};
 
-	COLORREF     backgroundColor   = {};
-	COLORREF     textColorNormal   = {};
-	COLORREF     textColorError    = {};
-	COLORREF     textColorWarning  = {};
-	u8           textPadding       = 0;
+	COLORREF     backgroundColor  = {};
+	COLORREF     textColorNormal  = {};
+	COLORREF     textColorError   = {};
+	COLORREF     textColorWarning = {};
+	u8           textPadding      = 0;
 
-	b32          isInitialized     = false;
-	HWND         hwnd              = nullptr;
-	HDC          screenDC          = nullptr;
-	HDC          bitmapDC          = nullptr;
-	HFONT        font              = nullptr;
-	HBITMAP      bitmap            = nullptr;
-	u32*         pixels            = nullptr;
-	u64          timerID           = 0;
+	b32          isInitialized    = false;
+	HWND         hwnd             = nullptr;
+	HDC          bitmapDC         = nullptr;
+	HFONT        font             = nullptr;
+	HBITMAP      bitmap           = nullptr;
+	u32*         pixels           = nullptr;
+	u64          timerID          = 0;
 
-	HFONT        previousFont      = nullptr;
-	HBITMAP      previousBitmap    = nullptr;
+	HFONT        previousFont     = nullptr;
+	HBITMAP      previousBitmap   = nullptr;
 };
 
-void ProcessNotificationQueue(NotificationWindow* state);
-u8 LogicalToActualIndex(NotificationWindow* state, u8 index); // TODO: Remove?
+b32 ProcessNotificationQueue(NotificationWindow* state);
+u8 LogicalToActualIndex(NotificationWindow* state, u8 index);
 
-/* TODO: Would it be better to refactor the Notify process to be able to
- * reserve the next spot, fill the buffer, then process the notification?
- */
 void
 Notify(NotificationWindow* state, c16* text, Severity severity = Severity::Info)
 {
-	// TODO: Maybe have a loop iteration counter in the main pump and
-	// use it to prevent infinite notifications from failures?
-
-	// TODO: Line on notification indicating queue count (colored if warning/error exists?)
-
 	// Supercede existing non-error notifications
 	for (u8 i = 0; i < state->queueCount; i++)
 	{
@@ -98,7 +89,7 @@ Notify(NotificationWindow* state, c16* text, Severity severity = Severity::Info)
 	if (state->queueCount == maxQueueCount)
 	{
 		severity = Severity::Warning;
-		text  = L"Queue is overflowing";
+		text = L"Queue is overflowing";
 	}
 	else if (state->queueCount > maxQueueCount)
 	{
@@ -158,12 +149,11 @@ NotifyFormat(NotificationWindow* notification, c16* format, ...)
 	va_end(args);
 }
 
-inline void
+inline b32
 NotifyWindowsError(NotificationWindow* notification, c16* text, Severity severity = Severity::Error, u32 errorCode = GetLastError())
 {
 	u32 uResult = 0;
 
-	// TODO: Use vs_list?
 	c16 tempBuffer[ArrayCount(Notification::text)] = {};
 	uResult = FormatMessageW(
 		FORMAT_MESSAGE_FROM_SYSTEM,
@@ -174,10 +164,19 @@ NotifyWindowsError(NotificationWindow* notification, c16* text, Severity severit
 		ArrayCount(tempBuffer),
 		nullptr
 	);
-	// TODO: Error
-	Assert(uResult > 0);
+
+	if (uResult == 0)
+	{
+		b32 bResult = NotifyWindowsError(notification, L"FormatMessage failed", Severity::Warning);
+		if (!bResult)
+			Notify(notification, L"FormatMessage failed repeatedly", Severity::Warning);
+
+		return false;
+	}
 
 	NotifyFormat(notification, L"%s - %s", severity, text, tempBuffer);
+
+	return true;
 }
 
 // TODO: Implement a formal circular buffer, overload operator[], and remove this function
@@ -185,9 +184,12 @@ inline u8
 LogicalToActualIndex(NotificationWindow* state, u8 index)
 {
 	Assert(index <= state->queueCount);
-	// TODO: Assert ArrayCount(state->queue) is a power of 2
 
-	u8 result = (state->queueStart + index) & (ArrayCount(state->queue) - 1);
+	const u8 queueSize = ArrayCount(state->queue);
+	static_assert(queueSize != 0, "Notification queue size is not a power of 2");
+	static_assert((queueSize & (queueSize - 1)) == 0, "Notification queue size is not a power of 2");
+
+	u8 result = (state->queueStart + index) & (queueSize - 1);
 	return result;
 }
 
@@ -209,15 +211,18 @@ UpdateWindowPositionAndSize(NotificationWindow* state)
 	return success;
 }
 
-void
+/* TODO: If an error occurs while processing a notification more than once
+ * in a row, notifications are broken and this is an error condition.
+ */
+b32
 ProcessNotificationQueue(NotificationWindow* state)
 {
 	i32 iResult;
 	u64 uResult;
 	b32 success;
 
-	if (!state->isInitialized) return;
-	if (state->queueCount == 0) return;
+	if (!state->isInitialized) return true;
+	if (state->queueCount == 0) return true; // TODO: Should this happen?
 
 	Notification* notification = &state->queue[state->queueStart];
 
@@ -229,8 +234,11 @@ ProcessNotificationQueue(NotificationWindow* state)
 		&textSizeRect,
 		DT_CALCRECT | DT_SINGLELINE
 	);
-	//if (result == 0) break;
-	// TODO: Error
+	if (iResult == 0)
+	{
+		NotifyFormat(state, L"DrawText failed: %i", Severity::Warning, iResult);
+		return false;
+	}
 
 	i32 textWidth = textSizeRect.right - textSizeRect.left;
 
@@ -243,8 +251,7 @@ ProcessNotificationQueue(NotificationWindow* state)
 		state->windowSize.cx = windowWidth;
 
 		success = UpdateWindowPositionAndSize(state);
-		//if (!success) break;
-		// TODO: Error
+		if (!success) return false;
 	}
 
 
@@ -267,16 +274,14 @@ ProcessNotificationQueue(NotificationWindow* state)
 		case Severity::Info:    newColor = state->textColorNormal;  break;
 		case Severity::Warning: newColor = state->textColorWarning; break;
 		case Severity::Error:   newColor = state->textColorError;   break;
-		default: Assert(L"Missing Error case");
 	}
 
 	COLORREF previousColor = {};
 	previousColor = SetTextColor(state->bitmapDC, newColor);
 	if (previousColor == CLR_INVALID)
 	{
-		// TODO: Warning
-		//GetLastError
-		//L"Failed to set text color."
+		NotifyWindowsError(state, L"SetTextColor failed", Severity::Warning);
+		return false;
 	}
 
 	RECT textRect = {};
@@ -291,8 +296,11 @@ ProcessNotificationQueue(NotificationWindow* state)
 		&textRect,
 		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
 	);
-	//if (result == 0) break;
-	// TODO: Error
+	if (iResult == 0)
+	{
+		NotifyFormat(state, L"DrawText failed: %i", Severity::Warning, iResult);
+		return false;
+	}
 
 
 	// TODO: Only do text rect
@@ -340,10 +348,16 @@ ProcessNotificationQueue(NotificationWindow* state)
 			state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
 
 			// TODO: This will overshoot by an amount based on the animation step duration
+			/* TODO: When replacing the current timer, WM_TIMER will not be sent until the
+			 * new time elapses. This means if you continually queue messages faster than
+			 * the animation tick you can get the notification to hang.
+			 */
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-			//if (result == 0)
-			// TODO: Error
-			//GetLastError
+			if (uResult == 0)
+			{
+				NotifyWindowsError(state, L"SetTimer failed", Severity::Warning);
+				return false;
+			}
 
 			break;
 		}
@@ -353,30 +367,36 @@ ProcessNotificationQueue(NotificationWindow* state)
 			state->animPhase = AnimPhase::Showing;
 			state->animStartTick = currentTicks;
 
-			success = ShowWindow(state->hwnd, SW_SHOW);
-			//if (!success) return;
-			// TODO: Error
+			ShowWindow(state->hwnd, SW_SHOW);
 
 			// TODO: This will overshoot by an amount based on the animation step duration
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-			//if (result == 0)
-			// TODO: Error
-			//GetLastError
+			if (uResult == 0)
+			{
+				NotifyWindowsError(state, L"SetTimer failed", Severity::Warning);
+				return false;
+			}
 
 			break;
 		}
-
-		default: Assert(L"Missing AnimPhase case");
 	}
 
 	// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
 	success = PostMessageW(state->hwnd, WM_TIMER, state->timerID, NULL);
-	//if (result == 0) return;
-	// TODO: Error
+	if (!success)
+	{
+		NotifyWindowsError(state, L"PostMessage failed", Severity::Warning);
+		return false;
+	}
 
 	state->isDirty = true;
+
+	return true;
 }
 
+/* TODO: If an error occurs while processing a WM_TIMER more than once
+* in a row, notifications are broken and this is an error condition.
+*/
 LRESULT CALLBACK
 NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -386,14 +406,43 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	auto state = (NotificationWindow*) GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 
+	#define NOTIFY_IF(expression, string, reaction) \
+	if (expression)                                 \
+	{                                               \
+		Notify(state, string, Severity::Error);     \
+		reaction;                                   \
+	}                                               \
+
+	#define NOTIFY_WINDOWS_IF(expression, string, reaction) \
+	if (expression)                                         \
+	{                                                       \
+		NotifyWindowsError(state, string);                  \
+		reaction;                                           \
+	}                                                       \
+
+	#define NOTHING
+
+
 	switch (uMsg)
 	{
 		case WM_NCCREATE:
 		{
 			// TODO: Getting this message twice
-			// TODO: Handle errors
+			
 			auto createStruct = (CREATESTRUCT*) lParam;
-			SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LPARAM) createStruct->lpCreateParams);
+			state = (NotificationWindow*) createStruct->lpCreateParams;
+
+			/* NOTE: Because Windows is dumb. See Return value section:
+			 * https://msdn.microsoft.com/en-us/library/windows/desktop/ms644898.aspx
+			 */
+			SetLastError(0);
+
+			i64 iResult = SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LPARAM) state);
+			if (iResult == 0 && GetLastError() != 0)
+			{
+				NotifyWindowsError(state, L"SetWindowLongPtr failed");
+				return false;
+			}
 			break;
 		}
 
@@ -408,20 +457,18 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			bitmapInfo.bmiHeader.biBitCount      = 32;
 			bitmapInfo.bmiHeader.biCompression   = BI_RGB;
 			bitmapInfo.bmiHeader.biSizeImage     = 0;
-			bitmapInfo.bmiHeader.biXPelsPerMeter = 0; // TODO: ?
-			bitmapInfo.bmiHeader.biYPelsPerMeter = 0; // TODO: ?
+			bitmapInfo.bmiHeader.biXPelsPerMeter = 0;
+			bitmapInfo.bmiHeader.biYPelsPerMeter = 0;
 			bitmapInfo.bmiHeader.biClrUsed       = 0;
 			bitmapInfo.bmiHeader.biClrImportant  = 0;
-			//bitmapInfo.bmiColors                 = {}; // TODO: ?
+			bitmapInfo.bmiColors[0]              = {};
 
-			state->screenDC = GetDC(nullptr);
-			if (!state->screenDC) return -1;
+			HDC screenDC = GetDC(nullptr);
+			NOTIFY_IF(!screenDC, L"GetDC failed", return -1);
 
-			state->bitmapDC = CreateCompatibleDC(state->screenDC);
-			if (!state->bitmapDC) return -1;
+			state->bitmapDC = CreateCompatibleDC(screenDC);
+			NOTIFY_IF(!state->bitmapDC, L"CreateCompatibleDC failed", return -1);
 
-			// TODO: Have to GdiFlush before using pixels
-			// https://msdn.microsoft.com/query/dev14.query?appId=Dev14IDEF1&l=EN-US&k=k(WINGDI%2FCreateDIBSection);k(CreateDIBSection);k(DevLang-C%2B%2B);k(TargetOS-Windows)&rd=true
 			state->bitmap = CreateDIBSection(
 				state->bitmapDC,
 				&bitmapInfo,
@@ -430,56 +477,37 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				nullptr,
 				0
 			);
-			if (!state->pixels) return -1;
-			GdiFlush();
+			NOTIFY_IF(!state->pixels, L"CreateDIBSection failed", return -1);
+
+			i32 iResult = ReleaseDC(nullptr, screenDC);
+			NOTIFY_IF(iResult == 0, L"ReleaseDC failed", return -1);
+
+			b32 success = GdiFlush();
+			NOTIFY_IF(!success, L"GdiFlush failed", return -1);
 
 			state->previousBitmap = (HBITMAP) SelectObject(state->bitmapDC, state->bitmap);
-			if (!state->previousBitmap) return -1;
+			NOTIFY_IF(!state->previousBitmap, L"SelectObject failed", return -1);
+
 
 			// Font
 			NONCLIENTMETRICSW nonClientMetrics = {};
 			nonClientMetrics.cbSize = sizeof(nonClientMetrics);
 
-			// TODO: Is it worth moving this to a procedure to linearize the flow?
 			success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
-			if (success)
-			{
-				state->font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
-				if (state->font)
-				{
-					state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
-					if (!state->previousFont)
-					{
-						// TODO: Queue warning notification
-						//GetLastError
-						//L"Failed to use created font."
-					}
-				}
-				else
-				{
-					// TODO: Queue warning notification
-					//GetLastError
-					//L"Failed to create font."
-				}
-			}
-			else
-			{
-				// TODO: Queue warning notification
-				//GetLastError
-				//L"Failed to obtain the current font."
-			}
+			NOTIFY_WINDOWS_IF(!success, L"SystemParametersInfo failed", return -1);
+
+			state->font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
+			NOTIFY_IF(!state->font, L"CreateFontIndirect failed", return -1);
+
+			state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
+			NOTIFY_IF(!state->previousFont, L"SelectObject failed", return -1);
 
 			iResult = SetBkMode(state->bitmapDC, TRANSPARENT);
-			if (iResult == 0)
-			{
-				// TODO: Queue warning notification
-				//GetLastError
-				//L"Failed to set transparent text background."
-			}
+			NOTIFY_IF(iResult == 0, L"SetBkMode failed", return -1);
 
 			state->isInitialized = true;
 			success = PostMessageW(hwnd, WM_PROCESSQUEUE, 0, 0);
-			Assert(success);
+			NOTIFY_WINDOWS_IF(!success, L"PostMessage failed", NOTHING);
 
 			return 0;
 		}
@@ -488,17 +516,41 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		{
 			state->isInitialized = false;
 
-			// TODO: Error handling
-			// NOTE: We only really need to bother with this because we want to
-			// destroy the startup window cleanly
-			SelectObject(state->bitmapDC, state->previousFont);
-			DeleteObject(state->font);
+			/* NOTE: WE have to replace the previous objects so they get destroyed
+			 * with the DC. I don't think we can destroy them manually, and we can't
+			 * destroy our own objects while they are selected into the DC (though
+			 * destroying the DC *probably* destroys them). Also, there's not really
+			 * anything we can do if any of this fails.
+			 * 
+			 * We can still Notify because it will short circuit on isInitialized == false
+			 * and we'll be able to show any queued errors during shutdown through
+			 * other means (e.g. MessageBox).
+			 */
 
-			SelectObject(state->bitmapDC, state->previousBitmap);
-			DeleteObject(state->bitmap);
+			//Delete font
+			HGDIOBJ previousObject;
+			previousObject = SelectObject(state->bitmapDC, state->previousFont);
+			state->previousFont = nullptr;
+			NOTIFY_IF(!previousObject, L"SelectObject failed", NOTHING);
 
-			DeleteDC(state->bitmapDC);
-			ReleaseDC(nullptr, state->screenDC);
+			b32 success;
+			success = DeleteObject(state->font);
+			state->font = nullptr;
+			NOTIFY_IF(!success, L"DeleteObject failed", NOTHING);
+
+			//Delete bitmap
+			previousObject = SelectObject(state->bitmapDC, state->previousBitmap);
+			state->previousBitmap = nullptr;
+			NOTIFY_IF(!previousObject, L"SelectObject failed", NOTHING);
+
+			success = DeleteObject(state->bitmap);
+			state->bitmap = nullptr;
+			NOTIFY_IF(!success, L"DeleteObject failed", NOTHING);
+
+			//Delete DC
+			success = DeleteDC(state->bitmapDC);
+			state->bitmapDC = nullptr;
+			NOTIFY_IF(!success, L"DeleteDC failed", NOTHING);
 
 			return 0;
 		}
@@ -560,9 +612,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								// TODO: Round?
 								u32 remainingMS = (u32) ((state->animIdleTicks - animTicks) / state->tickFrequency * 1000.);
 								uResult = SetTimer(hwnd, state->timerID, remainingMS, nullptr);
-								//if (result == 0)
-								// TODO: Error
-								//GetLastError
+								NOTIFY_WINDOWS_IF(uResult == 0, L"SetTimer failed", NOTHING);
 							}
 							else
 							{
@@ -573,9 +623,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 								// TODO: Formalize state changes
 								uResult = SetTimer(hwnd, state->timerID, state->animUpdateMS, nullptr);
-								//if (result == 0)
-								// TODO: Error
-								//GetLastError
+								NOTIFY_WINDOWS_IF(uResult == 0, L"SetTimer failed", NOTHING);
 
 								changed = true;
 								continue;
@@ -638,15 +686,12 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							newAlpha = 0;
 
 							success = KillTimer(hwnd, state->timerID);
-							// TODO: Error
+							NOTIFY_WINDOWS_IF(!success, L"KillTimer failed", break);
 
-							success = ShowWindow(hwnd, SW_HIDE);
-							// TODO: Error
+							ShowWindow(hwnd, SW_HIDE);
 
 							break;
 						}
-
-						default: Assert(L"Missing AnimPhase case");
 					}
 
 					bool isHidden = state->animPhase == AnimPhase::Hidden;
@@ -661,19 +706,22 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						POINT zeroPoint = {0, 0};
 
+						/* NOTE: I don't understand why, but psize *must* be specified or the
+						 * notification isn't visible even though the position isn't changing here.
+						 */
 						success = UpdateLayeredWindow(
 							state->hwnd,
-							state->screenDC,
-							&state->windowPosition, &state->windowSize,
+							nullptr,
+							nullptr, &state->windowSize,
 							state->bitmapDC,
 							&zeroPoint,
 							CLR_INVALID,
 							&blendFunction,
 							ULW_ALPHA
 						);
-						// TODO: Warning
+						NOTIFY_WINDOWS_IF(!success, L"UpdateLayeredWindow failed", return 0);
 
-						state->isDirty = !success;
+						state->isDirty = false;
 					}
 				}
 

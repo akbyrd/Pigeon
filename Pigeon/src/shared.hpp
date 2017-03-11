@@ -22,6 +22,12 @@ typedef size_t index;
 #define Assert(x) {if (!(x)) *((u8*) 0) = 0;}
 #define ArrayCount(x) sizeof(x) / sizeof(x[0])
 
+/* NOTE: Raise a compiler error when switching over
+ * an enum and any enum values are missing a case.
+ * https://msdn.microsoft.com/en-us/library/fdt9w8tf.aspx
+ */
+#pragma warning (error: 4062)
+
 inline u32
 StringCopy(c8* dst, c8* src)
 {

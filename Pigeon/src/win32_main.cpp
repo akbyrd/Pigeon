@@ -11,6 +11,31 @@ b32 RunCommand(NotificationWindow*, c8*, u16);
 #include "audio.hpp"
 #include "video.hpp"
 
+/* TODO: Would it be better to refactor the Notify process to be able to
+* reserve the next spot, fill the buffer, then process the notification?
+*/
+
+// TODO: BUG: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
+// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
+// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
+// TODO: SetProcessDPIAware?
+// TODO: Minimize the number of link dependencies
+
+// TODO: Pigeon image on startup
+// TODO: Pigeon SFX
+// TODO: Add a permanent log file
+// TODO: Line on notification indicating queue count (colored if warning/error exists?)
+
+// TODO: Hotkey to restart
+// TODO: Hotkey to show next notification
+// TODO: Hotkey to clear all notifications
+// TODO: Refactor animation stuff
+// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
+// TODO: Integrate volume ducking?
+// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
+// TODO: Auto-detect headset being turned on/off
+// TODO: Test with mutliple users. Might need use Local\ namespace for the event
+
 static const c16* PIGEON_GUID = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 static const c16* SINGLE_INSTANACE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
 static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process Name";
@@ -281,28 +306,6 @@ RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 i32 CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
-	// TODO: Finish refactoring error handling.
-
-	// TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
-	// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
-	// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
-	// TODO: SetProcessDPIAware?
-
-	// TODO: Pigeon image on startup
-	// TODO: Pigeon SFX
-	// TODO: Decouple errors and application closing
-	// TODO: Add a permanent log file
-
-	// TODO: Hotkey to restart
-	// TODO: Refactor animation stuff
-	// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
-	// TODO: Sound doesn't play on most devices when cycling audio devices
-	// TODO: Integrate volume ducking?
-	// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-	// TODO: Auto-detect headset being turned on/off
-	// TODO: Test with mutliple users. Might need use Local\ namespace for the event
-
-
 	NotificationWindow notification = {};
 	{
 		// NOTE: QPC and QPF are documented as not being able to fail on XP+
@@ -339,10 +342,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		#if false
 		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
-		{ 4,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Error::None))    },
-		{ 5,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Error::Warning)) },
-		{ 6,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Error::Error))   },
-		{ 7,           0, VK_F12, &RestartApplication                                            },
+		{ 4,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
+		{ 5,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
+		{ 6,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
+		{ 7,           0, VK_F12, &RestartApplication                                               },
+		#undef LAMBDA
 		#endif
 	};
 
