@@ -39,7 +39,7 @@ CycleRefreshRate(NotificationWindow* notification)
 		while (EnumDisplaySettingsExW(nullptr, i++, &displaySettings, EDS_RAWMODE))
 		{
 			u32 requiredFlags = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
-			if (displaySettings.dmFields & requiredFlags != requiredFlags)
+			if ((displaySettings.dmFields & requiredFlags) != requiredFlags)
 			{
 				Notify(notification, L"EnumDisplaySettingsEx didn't set necessary fields", Error::Warning);
 				continue;
@@ -64,7 +64,11 @@ CycleRefreshRate(NotificationWindow* notification)
 		}
 
 		// This can occur e.g. when the display has only one desirable frequency.
-		if (!foundDesiredFrequency) return false;
+		if (!foundDesiredFrequency)
+		{
+			NotifyFormat(notification, L"%u Hz", currentDisplaySettings.dmDisplayFrequency);
+			return false;
+		}
 	}
 
 
@@ -88,40 +92,6 @@ CycleRefreshRate(NotificationWindow* notification)
 inline b32
 OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 {
-	/*  NOTE: The path to rundll32 can't exceed MAX_PATH, we we can never
-	 * overflow the buffer as long as the options being passed in are under the
-	 * extra 256 being allocated so I'm not going to bother checking after
-	 * every operation.
-	 */
-	const u16 commandMaxLength = MAX_PATH + 256;
-
-	c8 commandLine[commandMaxLength] = "\"";
-	u16 commandLength = 1;
-
-	u16 systemDirCount = GetSystemDirectoryA(commandLine+commandLength, commandMaxLength-commandLength);
-	if (systemDirCount == 0)
-	{
-		NotifyWindowsError(notification, L"GetSystemDirectory failed");
-		return false;
-	}
-	commandLength += systemDirCount;
-
-	/* NOTE: Path does not end with a backslash unless the system directory is
-	 * the root directory
-	 */
-	if (commandLine[commandLength-1] != '\\')
-		commandLine[commandLength++] = '\\';
-
-	c8 adapterSettingsCommand[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
-	for (u16 i = 0; i < ArrayCount(adapterSettingsCommand); ++i)
-		commandLine[commandLength++] = adapterSettingsCommand[i];
-
-	u32 uResult = WinExec(commandLine, SW_NORMAL);
-	if (uResult < 32)
-	{
-		NotifyFormat(notification, L"GetSystemDirectory failed: %u", Error::Warning, uResult);
-		return false;
-	}
-
-	return true;
+	c8 command[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
+	return RunCommand(notification, command, ArrayCount(command));
 }

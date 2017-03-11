@@ -21,3 +21,16 @@ typedef size_t index;
 
 #define Assert(x) {if (!(x)) *((u8*) 0) = 0;}
 #define ArrayCount(x) sizeof(x) / sizeof(x[0])
+
+inline u32
+StringCopy(c8* dst, c8* src)
+{
+	c8* start = dst;
+
+	while (*src)
+		*dst++ = *src++;
+
+	*dst = '\0';
+
+	return (u32) (dst - start);
+}

@@ -6,6 +6,8 @@
 
 #include "shared.hpp"
 #include "notification.hpp"
+// TODO: Yuck.
+b32 RunCommand(NotificationWindow*, c8*, u16);
 #include "audio.hpp"
 #include "video.hpp"
 
@@ -226,6 +228,54 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 
 	return true;
 };
+
+inline b32
+RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
+{
+	/* NOTE: The system directory path can't exceed MAX_PATH, we we can never
+	 * overflow the buffer as long as the options being passed in are under the
+	 * extra 256 being allocated so I'm not going to bother checking after
+	 * every operation.
+	 */
+	#define MAX_COMMAND_LENGTH 256
+	const u16 maxTotalLength = MAX_PATH + MAX_COMMAND_LENGTH;
+
+	if (argsLength >= MAX_COMMAND_LENGTH)
+	{
+		Notify(notification, L"ExecuteCommand failed. Command too long.");
+		return false;
+	}
+
+	c8 commandLine[maxTotalLength];
+	c8* writePointer = commandLine;
+
+	writePointer += StringCopy(writePointer, "\"");
+
+	u16 systemDirCount = GetSystemDirectoryA(writePointer, (u32) maxTotalLength-(writePointer-commandLine));
+	if (systemDirCount == 0)
+	{
+		NotifyWindowsError(notification, L"GetSystemDirectory failed");
+		return false;
+	}
+	writePointer += systemDirCount;
+
+	/* NOTE: Path does not end with a backslash unless the system directory is
+	* the root directory
+	*/
+	if (*writePointer != '\\')
+		writePointer += StringCopy(writePointer, "\\");
+
+	writePointer += StringCopy(writePointer, args);
+
+	u32 uResult = WinExec(commandLine, SW_NORMAL);
+	if (uResult < 32)
+	{
+		NotifyFormat(notification, L"WinExec failed: %u", Error::Warning, uResult);
+		return false;
+	}
+
+	return true;
+}
 
 
 i32 CALLBACK
