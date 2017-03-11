@@ -387,6 +387,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 
+			// TODO: This causes an interesting queue overflow scenario. Probably related to the bug in the todo list
+			//NotifyFormat(&notification, L"Ima overflowin' ur bufferz", Severity::Warning);
+
 			if (msg.message == WM_NEWINSTANCE)
 			{
 				u64 newProcessStartTime = msg.wParam;
@@ -439,7 +442,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				default:
 					if (msg.message < WM_PROCESSQUEUE)
 						// TODO: Can we translate the message to something convenient like WM_KEYDOWN?
-						NotifyFormat(&notification, L"Unexpected message: %u, w:%llu, l:%lli\n", Severity::Warning, msg.message, msg.wParam, msg.lParam);
+						NotifyFormat(&notification, L"Unexpected message: 0x%X, w:0xll%X", Severity::Warning, msg.message, msg.wParam);
 					break;
 				}
 			}
