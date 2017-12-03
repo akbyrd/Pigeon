@@ -19,6 +19,7 @@ typedef int b32;
 
 typedef size_t index;
 
+// TODO: Replace with template versions
 #define Assert(x) {if (!(x)) *((u8*) 0) = 0;}
 #define ArrayCount(x) sizeof(x) / sizeof(x[0])
 
@@ -28,6 +29,7 @@ typedef size_t index;
  */
 #pragma warning (error: 4062)
 
+// TODO: Replace
 inline u32
 StringCopy(c8* dst, c8* src)
 {

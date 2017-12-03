@@ -402,7 +402,6 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	b32 success;
 	u64 uResult;
-	i32 iResult;
 
 	auto state = (NotificationWindow*) GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 

@@ -10,10 +10,11 @@
 b32 RunCommand(NotificationWindow*, c8*, u16);
 #include "audio.hpp"
 #include "video.hpp"
+#include "WindowMessageStrings.h"
 
 /* TODO: Would it be better to refactor the Notify process to be able to
-* reserve the next spot, fill the buffer, then process the notification?
-*/
+ * reserve the next spot, fill the buffer, then process the notification?
+ */
 
 // TODO: BUG: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
 // TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
@@ -37,7 +38,7 @@ b32 RunCommand(NotificationWindow*, c8*, u16);
 // TODO: Test with mutliple users. Might need use Local\ namespace for the event
 
 static const c16* PIGEON_GUID = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
-static const c16* SINGLE_INSTANACE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
+static const c16* SINGLE_INSTANCE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
 static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process Name";
 
 enum struct InitPhase
@@ -147,7 +148,7 @@ Initialize(InitPhase& phase,
 		}
 
 		// TOOD: Namespace?
-		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANACE_MUTEX_NAME);
+		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
 		if (!singleInstanceMutex)
 		{
 			NotifyWindowsError(&notification, L"CreateMutex failed");
@@ -257,7 +258,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 b32
 RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 {
-	/* NOTE: The system directory path can't exceed MAX_PATH, we we can never
+	/* NOTE: The system directory path can't exceed MAX_PATH, we can never
 	 * overflow the buffer as long as the options being passed in are under the
 	 * extra 256 being allocated so I'm not going to bother checking after
 	 * every operation.
@@ -413,37 +414,51 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			{
 				switch (msg.message)
 				{
-				case WM_HOTKEY:
-				{
-					for (u8 i = 0; i < ArrayCount(hotkeys); i++)
+					case WM_HOTKEY:
 					{
-						if (msg.wParam == hotkeys[i].id)
+						for (u8 i = 0; i < ArrayCount(hotkeys); i++)
 						{
-							hotkeys[i].execute(&notification);
-							break;
+							if (msg.wParam == hotkeys[i].id)
+							{
+								hotkeys[i].execute(&notification);
+								break;
+							}
 						}
+						break;
 					}
-					break;
-				}
 
-				case WM_QUIT:
-					quit = true;
-					returnValue = (i32) msg.wParam;
-					break;
+					case WM_QUIT:
+						quit = true;
+						returnValue = (i32) msg.wParam;
+						break;
 
-				// Expected messages
-				case WM_TIMER:
-				case WM_PROCESSQUEUE:
-					break;
+					// Expected messages
+					case WM_TIMER:
+					case WM_PROCESSQUEUE:
+						break;
 
-				// TODO: WM_FONTCHANGE (29) - when installing fonts
-				// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
-				// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
-				default:
-					if (msg.message < WM_PROCESSQUEUE)
-						// TODO: Can we translate the message to something convenient like WM_KEYDOWN?
-						NotifyFormat(&notification, L"Unexpected message: 0x%X, w:0xll%X", Severity::Warning, msg.message, msg.wParam);
-					break;
+					// TODO: WM_FONTCHANGE (29) - when installing fonts
+					// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
+					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
+					// NOTE: Use msg.message,wm in the Watch window to see the message name!
+					default:
+					{
+						if (msg.message < WM_PROCESSQUEUE)
+						{
+							c16* messageName = GetWindowMessageName(msg.message);
+							if (!messageName)
+							{
+								//TODO: Check error
+								c16 buffer[32];
+								swprintf(buffer, ArrayCount(buffer), L"UNKNOWN (0x%X)", msg.message);
+
+								messageName = buffer;
+							}
+
+							NotifyFormat(&notification, L"Unexpected message: %s, w:0x%llX", Severity::Warning, messageName, msg.wParam);
+						}
+						break;
+					}
 				}
 			}
 		}

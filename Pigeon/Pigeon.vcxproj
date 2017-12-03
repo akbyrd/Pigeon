@@ -98,6 +98,7 @@
     <ClInclude Include="src\audio.hpp" />
     <ClInclude Include="src\IPolicyConfig.h" />
     <ClInclude Include="src\video.hpp" />
+    <ClInclude Include="src\WindowMessageStrings.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="res\Pigeon.rc" />

@@ -33,6 +33,9 @@
     <ClInclude Include="src\notification.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\WindowMessageStrings.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="res\Pigeon.rc">
