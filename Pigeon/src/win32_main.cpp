@@ -436,11 +436,11 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 					// Expected messages
 					case WM_TIMER:
+					case WM_TIMECHANGE:
 					case WM_PROCESSQUEUE:
 						break;
 
 					// TODO: WM_FONTCHANGE (29) - when installing fonts
-					// TODO: WM_TIMECHANGE (30) - Shows up somewhat randomly
 					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
 					// NOTE: Use msg.message,wm in the Watch window to see the message name!
 					default:
