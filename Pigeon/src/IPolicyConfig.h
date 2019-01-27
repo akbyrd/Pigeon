@@ -2,14 +2,14 @@
 
 #pragma once
 
-  interface DECLSPEC_UUID("f8679f50-850a-41cf-9c72-430f290290c8") IPolicyConfig; //Win10 1607
-//interface DECLSPEC_UUID("6be54be8-a068-4875-a49d-0c2966473b11") IPolicyConfig; //Win10 1511
-//interface DECLSPEC_UUID("ca286fc3-91fd-42c3-8e9b-caafa66242e3") IPolicyConfig; //Win10 1507
-//interface DECLSPEC_UUID("8f9fb2aa-1c0b-4d54-b6bb-b2f2a10ce03c") IPolicyConfig; //Win10?
-//interface DECLSPEC_UUID("00000000-0000-0000-C000-000000000046") IPolicyConfig; //IUnknown
+  interface DECLSPEC_UUID("f8679f50-850a-41cf-9c72-430f290290c8") IPolicyConfig; // Win10 1607+
+//interface DECLSPEC_UUID("6be54be8-a068-4875-a49d-0c2966473b11") IPolicyConfig; // Win10 1511
+//interface DECLSPEC_UUID("ca286fc3-91fd-42c3-8e9b-caafa66242e3") IPolicyConfig; // Win10 1507
+//interface DECLSPEC_UUID("8f9fb2aa-1c0b-4d54-b6bb-b2f2a10ce03c") IPolicyConfig; // Win10?
+//interface DECLSPEC_UUID("00000000-0000-0000-C000-000000000046") IPolicyConfig; // IUnknown
 const IID IID_IPolicyConfig = __uuidof(IPolicyConfig);
 
-class DECLSPEC_UUID("870af99c-171d-4f9e-af0d-e63df40c2bc9") CPolicyConfigClient; //Win7+
+class DECLSPEC_UUID("870af99c-171d-4f9e-af0d-e63df40c2bc9") CPolicyConfigClient; // Win7+
 const CLSID CLSID_CPolicyConfigClient = __uuidof(CPolicyConfigClient);
 
 struct WAVEFORMATEX;

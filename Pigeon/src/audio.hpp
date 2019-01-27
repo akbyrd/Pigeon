@@ -31,7 +31,7 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
 
-	EDataFlow dataFlow;
+	EDataFlow dataFlow = -1;
 	switch (audioType)
 	{
 		default: Assert(false); break;

@@ -1,8 +1,8 @@
 #pragma warning(push)
 #pragma warning(disable: 4005)
 
-//TODO: Might be better to leverage FormatMessage and a custom lookup
-//TODO: Maybe sort the list and use a binary search?
+// TODO: Might be better to leverage FormatMessage and a custom lookup
+// TODO: Maybe sort the list and use a binary search?
 struct WindowMessage
 {
 	u32  id;
@@ -37,7 +37,7 @@ WindowMessage windowMessages[] = {
 
 	ID_NAME(WM_SHOWWINDOW),
 
-	ID_NAME(WM_SETTINGCHANGE), //aka WM_WININICHANGE
+	ID_NAME(WM_SETTINGCHANGE), // aka WM_WININICHANGE
 	ID_NAME(WM_DEVMODECHANGE),
 	ID_NAME(WM_ACTIVATEAPP),
 	ID_NAME(WM_FONTCHANGE),
@@ -123,7 +123,7 @@ WindowMessage windowMessages[] = {
 
 	ID_NAME(WM_INPUT_DEVICE_CHANGE),
 	ID_NAME(WM_INPUT),
-	ID_NAME(WM_KEYDOWN), //aka WM_KEYFIRST
+	ID_NAME(WM_KEYDOWN), // aka WM_KEYFIRST
 	ID_NAME(WM_KEYUP),
 	ID_NAME(WM_CHAR),
 	ID_NAME(WM_DEADCHAR),
@@ -133,7 +133,7 @@ WindowMessage windowMessages[] = {
 	ID_NAME(WM_SYSDEADCHAR),
 
 	ID_NAME(WM_UNICHAR),
-	//WM_KEYLAST may be 0x0108, 0x0109, or 0x010F
+	// WM_KEYLAST may be 0x0108, 0x0109, or 0x010F
 
 	ID_NAME(WM_IME_STARTCOMPOSITION),
 	ID_NAME(WM_IME_ENDCOMPOSITION),
@@ -170,7 +170,7 @@ WindowMessage windowMessages[] = {
 	ID_NAME(WM_CTLCOLORSCROLLBAR),
 	ID_NAME(WM_CTLCOLORSTATIC),
 
-	ID_NAME(WM_MOUSEMOVE), //aka WM_MOUSEFIRST
+	ID_NAME(WM_MOUSEMOVE), // aka WM_MOUSEFIRST
 	ID_NAME(WM_LBUTTONDOWN),
 	ID_NAME(WM_LBUTTONUP),
 	ID_NAME(WM_LBUTTONDBLCLK),
@@ -185,7 +185,7 @@ WindowMessage windowMessages[] = {
 	ID_NAME(WM_XBUTTONUP),
 	ID_NAME(WM_XBUTTONDBLCLK),
 	ID_NAME(WM_MOUSEHWHEEL),
-	//WM_MOUSELAST may be 0x0209, 0x020A, 0x020D, or 0x020E
+	// WM_MOUSELAST may be 0x0209, 0x020A, 0x020D, or 0x020E
 
 	ID_NAME(WM_PARENTNOTIFY),
 	ID_NAME(WM_ENTERMENULOOP),

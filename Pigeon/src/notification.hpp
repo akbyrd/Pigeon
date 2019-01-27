@@ -211,9 +211,8 @@ UpdateWindowPositionAndSize(NotificationWindow* state)
 	return success;
 }
 
-/* TODO: If an error occurs while processing a notification more than once
- * in a row, notifications are broken and this is an error condition.
- */
+// TODO: If an error occurs while processing a notification more than once in a row, notifications
+// are broken and this is an error condition.
 b32
 ProcessNotificationQueue(NotificationWindow* state)
 {
@@ -341,17 +340,16 @@ ProcessNotificationQueue(NotificationWindow* state)
 		{
 			state->animPhase = AnimPhase::Showing;
 
-			// TODO: This will not work if the show and hide animations are different or asymmetric
+			// TODO: This will not work if the show and hide animations are different or asymmetric.
 			f64 normalizedTimeInState = (currentTicks - state->animStartTick) / state->animHideTicks;
 			if (normalizedTimeInState > 1) normalizedTimeInState = 1;
 
 			state->animStartTick = currentTicks - ((1 - normalizedTimeInState) * state->animShowTicks);
 
 			// TODO: This will overshoot by an amount based on the animation step duration
-			/* TODO: When replacing the current timer, WM_TIMER will not be sent until the
-			 * new time elapses. This means if you continually queue messages faster than
-			 * the animation tick you can get the notification to hang.
-			 */
+			// TODO: When replacing the current timer, WM_TIMER will not be sent until the new time
+			// elapses. This means if you continually queue messages faster than the animation tick you
+			// can get the notification to hang.
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
 			if (uResult == 0)
 			{
@@ -394,9 +392,8 @@ ProcessNotificationQueue(NotificationWindow* state)
 	return true;
 }
 
-/* TODO: If an error occurs while processing a WM_TIMER more than once
-* in a row, notifications are broken and this is an error condition.
-*/
+// TODO: If an error occurs while processing a WM_TIMER more than once in a row, notifications are
+// broken and this is an error condition.
 LRESULT CALLBACK
 NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -431,9 +428,8 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			auto createStruct = (CREATESTRUCT*) lParam;
 			state = (NotificationWindow*) createStruct->lpCreateParams;
 
-			/* NOTE: Because Windows is dumb. See Return value section:
-			 * https://msdn.microsoft.com/en-us/library/windows/desktop/ms644898.aspx
-			 */
+			// NOTE: Because Windows is dumb. See Return value section:
+			// https://msdn.microsoft.com/en-us/library/windows/desktop/ms644898.aspx
 			SetLastError(0);
 
 			i64 iResult = SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LPARAM) state);
@@ -515,18 +511,15 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		{
 			state->isInitialized = false;
 
-			/* NOTE: WE have to replace the previous objects so they get destroyed
-			 * with the DC. I don't think we can destroy them manually, and we can't
-			 * destroy our own objects while they are selected into the DC (though
-			 * destroying the DC *probably* destroys them). Also, there's not really
-			 * anything we can do if any of this fails.
-			 *
-			 * We can still Notify because it will short circuit on isInitialized == false
-			 * and we'll be able to show any queued errors during shutdown through
-			 * other means (e.g. MessageBox).
-			 */
+			// NOTE: We have to replace the previous objects so they get destroyed with the DC. I don't
+			// think we can destroy them manually, and we can't destroy our own objects while they are
+			// selected into the DC (though destroying the DC *probably* destroys them). Also, there's
+			// not really anything we can do if any of this fails.
+			//
+			// We can still Notify because it will short circuit on isInitialized == false and we'll be
+			// able to show any queued errors during shutdown through other means (e.g. MessageBox).
 
-			//Delete font
+			// Delete font
 			HGDIOBJ previousObject;
 			previousObject = SelectObject(state->bitmapDC, state->previousFont);
 			state->previousFont = nullptr;
@@ -537,7 +530,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			state->font = nullptr;
 			NOTIFY_IF(!success, L"DeleteObject failed", NOTHING);
 
-			//Delete bitmap
+			// Delete bitmap
 			previousObject = SelectObject(state->bitmapDC, state->previousBitmap);
 			state->previousBitmap = nullptr;
 			NOTIFY_IF(!previousObject, L"SelectObject failed", NOTHING);
@@ -546,7 +539,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			state->bitmap = nullptr;
 			NOTIFY_IF(!success, L"DeleteObject failed", NOTHING);
 
-			//Delete DC
+			// Delete DC
 			success = DeleteDC(state->bitmapDC);
 			state->bitmapDC = nullptr;
 			NOTIFY_IF(!success, L"DeleteDC failed", NOTHING);
@@ -705,9 +698,8 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 						POINT zeroPoint = {0, 0};
 
-						/* NOTE: I don't understand why, but psize *must* be specified or the
-						 * notification isn't visible even though the position isn't changing here.
-						 */
+						// NOTE: I don't understand why, but psize *must* be specified or the notification
+						// isn't visible even though the position isn't changing here.
 						success = UpdateLayeredWindow(
 							state->hwnd,
 							nullptr,

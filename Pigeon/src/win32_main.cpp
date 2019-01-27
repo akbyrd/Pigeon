@@ -2,7 +2,7 @@
 // TODO: #include <minwindef.h>?
 #include <Windows.h>
 // TODO: Switch to WRL ComPtr
-#include <atlbase.h> //CComPtr
+#include <atlbase.h> // CComPtr
 
 #include "shared.hpp"
 #include "notification.hpp"
@@ -12,12 +12,13 @@ b32 RunCommand(NotificationWindow*, c8*, u16);
 #include "video.hpp"
 #include "WindowMessageStrings.h"
 
-/* TODO: Would it be better to refactor the Notify process to be able to
- * reserve the next spot, fill the buffer, then process the notification?
- */
+// TODO: Would it be better to refactor the Notify process to be able to reserve the next spot, fill
+// the buffer, then process the notification?
 
-// TODO: BUG: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
-// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
+// TODO: BUG: Show warning, show another warning while first is hiding => shows 2 warnings
+// (repeating the first?)
+// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few
+// seconds)
 // TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
 // TODO: SetProcessDPIAware?
 // TODO: Minimize the number of link dependencies
@@ -31,7 +32,8 @@ b32 RunCommand(NotificationWindow*, c8*, u16);
 // TODO: Hotkey to show next notification
 // TODO: Hotkey to clear all notifications
 // TODO: Refactor animation stuff
-// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
+// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to
+// multiples of 15.6ms)
 // TODO: Integrate volume ducking?
 // https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
 // TODO: Auto-detect headset being turned on/off
@@ -66,7 +68,7 @@ Initialize(InitPhase& phase,
            u64& startTime, u32& processID, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex,
            Hotkey* hotkeys, u8 hotkeyCount)
 {
-	//Create window
+	// Create window
 	{
 		WNDCLASSW windowClass = {};
 		windowClass.style         = 0; //CS_DROPSHADOW
@@ -112,14 +114,13 @@ Initialize(InitPhase& phase,
 	}
 
 
-	//Enforce single instance
+	// Enforce single instance
 	{
-		/* TODO: Still have some failure cases
-		* - If an older process reaches the wait after a newer process it's going to get stuck there.
-		* - If a newer process posts a message before an older process creates its window and the
-		*   older process acquires the mutex from an even older process it will hang (until a new
-		*   message is posted)
-		*/
+		// TODO: Still have some failure cases
+		// - If an older process reaches the wait after a newer process it's going to get stuck there.
+		// - If a newer process posts a message before an older process creates its window and the
+		//   older process acquires the mutex from an even older process it will hang (until a new
+		//   message is posted)
 
 		HANDLE hProcess = GetCurrentProcess();
 
@@ -147,7 +148,7 @@ Initialize(InitPhase& phase,
 			return false;
 		}
 
-		// TOOD: Namespace?
+		// TODO: Namespace?
 		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
 		if (!singleInstanceMutex)
 		{
@@ -182,7 +183,7 @@ Initialize(InitPhase& phase,
 	}
 
 
-	//Register hotkeys
+	// Register hotkeys
 	{
 		for (u8 i = 0; i < hotkeyCount; i++)
 		{
@@ -205,7 +206,7 @@ Initialize(InitPhase& phase,
 	}
 
 
-	//Initialize systems
+	// Initialize systems
 	{
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 		if (FAILED(hr))
@@ -258,11 +259,9 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 b32
 RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 {
-	/* NOTE: The system directory path can't exceed MAX_PATH, we can never
-	 * overflow the buffer as long as the options being passed in are under the
-	 * extra 256 being allocated so I'm not going to bother checking after
-	 * every operation.
-	 */
+	// NOTE: The system directory path can't exceed MAX_PATH, we can never overflow the buffer as
+	// long as the options being passed in are under the extra 256 being allocated so I'm not going
+	// to bother checking after every operation.
 	#define MAX_COMMAND_LENGTH 256
 	const u16 maxTotalLength = MAX_PATH + MAX_COMMAND_LENGTH;
 
@@ -285,9 +284,7 @@ RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
 	}
 	writePointer += systemDirCount;
 
-	/* NOTE: Path does not end with a backslash unless the system directory is
-	* the root directory
-	*/
+	// NOTE: Path does not end with a backslash unless the system directory is the root directory
 	if (*writePointer != '\\')
 		writePointer += StringCopy(writePointer, "\\");
 
@@ -330,7 +327,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		notification.timerID          = 1;
 		notification.tickFrequency    = tickFrequency;
 
-		// DEBUG
+		// DEBUG:
 		Notify(&notification, L"Started!");
 	}
 
@@ -390,7 +387,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 
-			// TODO: This causes an interesting queue overflow scenario. Probably related to the bug in the todo list
+			// TODO: This causes an interesting queue overflow scenario. Probably related to the bug in
+			// the todo list
 			//NotifyFormat(&notification, L"Ima overflowin' ur bufferz", Severity::Warning);
 
 			if (msg.message == WM_NEWINSTANCE)
@@ -441,7 +439,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						break;
 
 					// TODO: WM_FONTCHANGE (29) - when installing fonts
-					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only sometimes
+					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only
+					// sometimes
 					// NOTE: Use msg.message,wm in the Watch window to see the message name!
 					default:
 					{
@@ -450,7 +449,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							c16* messageName = GetWindowMessageName(msg.message);
 							if (!messageName)
 							{
-								//TODO: Check error
+								// TODO: Check error
 								c16 buffer[32];
 								swprintf(buffer, ArrayCount(buffer), L"UNKNOWN (0x%X)", msg.message);
 
@@ -469,7 +468,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Cleanup
 	if (phase >= InitPhase::SystemsInitialized)
-		// TODO: This can enter a modal loop and dispatch messages. Understand the implications of this.
+		// TODO: This can enter a modal loop and dispatch messages. Understand the implications of
+		// this.
 		CoUninitialize();
 
 	// Show remaining errors
@@ -480,10 +480,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		if (note.severity == Severity::Error)
 		{
-			/* NOTE: This will block until Ok is clicked, but that's ok because it
-			 * only happens when window creation failed and we don't hold the mutex.
-			 */
-			// TODO: Ocassionally getting this with "There can be only one!" if running a shit ton of instances
+			// NOTE: This will block until Ok is clicked, but that's ok because it only happens when
+			// window creation failed and we don't hold the mutex.
+			// TODO: Ocassionally getting this with "There can be only one!" if running a shit ton of
+			// instances
 			i32 iResult = MessageBoxW(nullptr, note.text, L"Pigeon Error", MB_OK | MB_ICONERROR | MB_SERVICE_NOTIFICATION);
 			if (iResult == 0) {} // TODO: Uh, system log?
 		}

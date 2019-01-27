@@ -1,9 +1,8 @@
 inline b32
 AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 {
-	/* NOTE: Only dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags,
-	 * and dmDisplayFrequency are set by EnumDisplaySettings
-	 */
+	// NOTE: Only dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, and dmDisplayFrequency are
+	// set by EnumDisplaySettings
 	return lhs->dmPelsWidth    == rhs->dmPelsWidth
 	    && lhs->dmPelsHeight   == rhs->dmPelsHeight
 	    && lhs->dmBitsPerPel   == rhs->dmBitsPerPel
