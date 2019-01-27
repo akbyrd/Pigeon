@@ -1,0 +1,2 @@
+RegSetValue	HKLM\System\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\PruningMode	SUCCESS	Type: REG_DWORD, Length: 4, Data: 1
+RegSetValue	HKLM\System\CurrentControlSet\Control\GraphicsDrivers\UnsupportedMonitorModesAllowed	SUCCESS	Type: REG_DWORD, Length: 4, Data: 0

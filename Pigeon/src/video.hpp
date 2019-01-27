@@ -95,3 +95,34 @@ OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 	c8 command[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
 	return RunCommand(notification, command, ArrayCount(command));
 }
+
+// INCOMPLETE: Not finished/tested since I don't need it for my current monitor.
+void
+EnableNvidiaCustomResolutions()
+{
+	i32 result;
+
+	u32 value;
+	u32 valueSize = sizeof(value);
+	result = RegGetValueW(
+		HKEY_LOCAL_MACHINE,
+		L"System\\CurrentControlSet\\Control\\GraphicsDrivers",
+		L"UnsupportedMonitorModesAllowed",
+		RRF_RT_DWORD,
+		nullptr,
+		&value,
+		(LPDWORD) &valueSize
+	);
+	if (result != ERROR_SUCCESS) __debugbreak();
+
+	i32 one = 2;
+	result = RegSetKeyValueW(
+		HKEY_LOCAL_MACHINE,
+		L"System\\CurrentControlSet\\Control\\GraphicsDrivers",
+		L"UnsupportedMonitorModesAllowed",
+		REG_DWORD,
+		&one,
+		sizeof(one)
+	);
+	if (result != ERROR_SUCCESS) __debugbreak();
+}
