@@ -197,7 +197,7 @@ inline b32
 UpdateWindowPositionAndSize(NotificationWindow* state)
 {
 	b32 success;
-	
+
 	success = SetWindowPos(
 		state->hwnd,
 		nullptr,
@@ -427,7 +427,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		case WM_NCCREATE:
 		{
 			// TODO: Getting this message twice
-			
+
 			auto createStruct = (CREATESTRUCT*) lParam;
 			state = (NotificationWindow*) createStruct->lpCreateParams;
 
@@ -520,7 +520,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			 * destroy our own objects while they are selected into the DC (though
 			 * destroying the DC *probably* destroys them). Also, there's not really
 			 * anything we can do if any of this fails.
-			 * 
+			 *
 			 * We can still Notify because it will short circuit on isInitialized == false
 			 * and we'll be able to show any queued errors during shutdown through
 			 * other means (e.g. MessageBox).

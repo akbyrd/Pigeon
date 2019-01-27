@@ -57,7 +57,7 @@ struct Hotkey
 	u32 key;
 	b32 (*execute)(NotificationWindow*);
 
-	b32 registered = false;
+	b32 registered;
 };
 
 b32
