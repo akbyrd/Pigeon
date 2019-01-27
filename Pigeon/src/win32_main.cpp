@@ -336,17 +336,19 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	Hotkey hotkeys[] = {
-		{ 0,           0, VK_F5 , &CycleDefaultAudioDevice          },
-		{ 1, MOD_CONTROL, VK_F5 , &OpenAudioPlaybackDevicesWindow   },
-		{ 2,           0, VK_F6 , &CycleRefreshRate                 },
-		{ 3, MOD_CONTROL, VK_F6 , &OpenDisplayAdapterSettingsWindow },
+		{ 0,           0, VK_F9 , &CycleAudioPlaybackDevice         },
+		{ 1, MOD_CONTROL, VK_F9 , &OpenAudioPlaybackDevicesWindow   },
+		{ 2,           0, VK_F10, &CycleAudioRecordingDevice        },
+		{ 3, MOD_CONTROL, VK_F10, &OpenAudioRecordingDevicesWindow  },
+		{ 4,           0, VK_F11, &CycleRefreshRate                 },
+		{ 5, MOD_CONTROL, VK_F11, &OpenDisplayAdapterSettingsWindow },
 
 		#if false
 		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
-		{ 4,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
-		{ 5,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
-		{ 6,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
-		{ 7,           0, VK_F12, &RestartApplication                                               },
+		{ 6,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
+		{ 7,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
+		{ 8,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
+		{ 9,           0, VK_F12, &RestartApplication                                               },
 		#undef LAMBDA
 		#endif
 	};

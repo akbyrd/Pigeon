@@ -4,10 +4,17 @@
 
 #include "IPolicyConfig.h"
 
-// NOTE: CoInitialize is assumed to have been called.
-b32
-CycleDefaultAudioDevice(NotificationWindow* notification)
+enum struct AudioType
 {
+	Null,
+	Playback,
+	Recording,
+};
+
+static b32
+CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
+{
+	// NOTE: CoInitialize is assumed to have been called.
 	HRESULT hr;
 
 
@@ -24,15 +31,22 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
 
+	EDataFlow dataFlow;
+	switch (audioType)
+	{
+		default: Assert(false); break;
+		case AudioType::Playback:  dataFlow = EDataFlow::eRender;  break;
+		case AudioType::Recording: dataFlow = EDataFlow::eCapture; break;
+	}
 
 	// Get current audio device
 	CComHeapPtr<c16> currentDefaultDeviceID;
 	{
-		CComPtr<IMMDevice> currentPlaybackDevice;
-		hr = deviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eConsole, &currentPlaybackDevice);
+		CComPtr<IMMDevice> currentDevice;
+		hr = deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eConsole, &currentDevice);
 		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, return false);
 
-		hr = currentPlaybackDevice->GetId(&currentDefaultDeviceID);
+		hr = currentDevice->GetId(&currentDefaultDeviceID);
 		NOTIFY_IF_FAILED(L"GetId failed", hr, return false);
 	}
 
@@ -41,7 +55,7 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 	CComHeapPtr<c16> newDefaultDeviceID;
 	CComPtr<IMMDeviceCollection> deviceCollection;
 	{
-		hr = deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &deviceCollection);
+		hr = deviceEnumerator->EnumAudioEndpoints(dataFlow, DEVICE_STATE_ACTIVE, &deviceCollection);
 		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, return false);
 
 		u32 deviceCount;
@@ -114,11 +128,18 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
 		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
 
-		b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
-		if (!success)
+		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eCommunications);
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
+
+
+		if (audioType == AudioType::Playback)
 		{
-			Notify(notification, L"PlaySound failed", Severity::Warning);
-			return false;
+			b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
+			if (!success)
+			{
+				Notify(notification, L"PlaySound failed", Severity::Warning);
+				return false;
+			}
 		}
 	}
 
@@ -126,8 +147,29 @@ CycleDefaultAudioDevice(NotificationWindow* notification)
 }
 
 b32
+CycleAudioPlaybackDevice(NotificationWindow* notification)
+{
+	// NOTE: CoInitialize is assumed to have been called.
+	return CycleAudioDevice(notification, AudioType::Playback);
+}
+
+b32
 OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
 {
-	c8 command[] = "control.exe\" /name Microsoft.Sound";
+	c8 command[] = "control.exe\" /name Microsoft.Sound /page Playback";
+	return RunCommand(notification, command, ArrayCount(command));
+}
+
+b32
+CycleAudioRecordingDevice(NotificationWindow* notification)
+{
+	// NOTE: CoInitialize is assumed to have been called.
+	return CycleAudioDevice(notification, AudioType::Recording);
+}
+
+b32
+OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
+{
+	c8 command[] = "control.exe\" /name Microsoft.Sound /page Recording";
 	return RunCommand(notification, command, ArrayCount(command));
 }
