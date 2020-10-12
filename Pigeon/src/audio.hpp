@@ -18,12 +18,19 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	HRESULT hr;
 
 
+	#define NOTIFY_IF(expression, string, reaction)      \
+	if (expression)                                      \
+	{                                                    \
+		Notify(notification, string, Severity::Warning); \
+		reaction;                                        \
+	}                                                    \
+
 	#define NOTIFY_IF_FAILED(string, hr, reaction)                       \
 	if (FAILED(hr))                                                      \
 	{                                                                    \
 		NotifyWindowsError(notification, string, Severity::Warning, hr); \
 		reaction;                                                        \
-	}                                                                    \
+	}
 
 
 	// Shared
@@ -31,13 +38,28 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
 
-	EDataFlow dataFlow = -1;
+	EDataFlow dataFlow = (EDataFlow) -1;
 	switch (audioType)
 	{
 		default: Assert(false); break;
 		case AudioType::Playback:  dataFlow = EDataFlow::eRender;  break;
 		case AudioType::Recording: dataFlow = EDataFlow::eCapture; break;
 	}
+
+
+	// Check for devices
+	CComPtr<IMMDeviceCollection> deviceCollection;
+	u32 deviceCount;
+	{
+		hr = deviceEnumerator->EnumAudioEndpoints(dataFlow, DEVICE_STATE_ACTIVE, &deviceCollection);
+		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, return false);
+
+		hr = deviceCollection->GetCount(&deviceCount);
+		NOTIFY_IF_FAILED(L"GetCount failed", hr, return false);
+
+		NOTIFY_IF(deviceCount == 0, L"No devices found", return true);
+	}
+
 
 	// Get current audio device
 	CComHeapPtr<c16> currentDefaultDeviceID;
@@ -53,20 +75,14 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 
 	// Find next available audio device
 	CComHeapPtr<c16> newDefaultDeviceID;
-	CComPtr<IMMDeviceCollection> deviceCollection;
 	{
-		hr = deviceEnumerator->EnumAudioEndpoints(dataFlow, DEVICE_STATE_ACTIVE, &deviceCollection);
-		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, return false);
-
-		u32 deviceCount;
-		hr = deviceCollection->GetCount(&deviceCount);
-		NOTIFY_IF_FAILED(L"GetCount failed", hr, return false);
-
-		bool useNextDevice = false;
-		for (u32 i = 0; i < deviceCount; ++i)
+		b32 useNextDevice = false;
+		for (u32 i = 0; i < deviceCount + 1; ++i)
 		{
+			u32 index = i % deviceCount;
+
 			CComPtr<IMMDevice> device;
-			hr = deviceCollection->Item(i, &device);
+			hr = deviceCollection->Item(index, &device);
 			NOTIFY_IF_FAILED(L"Item failed", hr, continue);
 
 			CComHeapPtr<c16> deviceID;
@@ -82,12 +98,6 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 			if (wcscmp(deviceID, currentDefaultDeviceID) == 0)
 			{
 				useNextDevice = true;
-				continue;
-			}
-
-			if (!newDefaultDeviceID)
-			{
-				newDefaultDeviceID = deviceID;
 			}
 		}
 	}
@@ -144,6 +154,9 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	}
 
 	return true;
+
+	#undef NOTIFY_IF
+	#undef NOTIFY_IF_FAILED
 }
 
 b32

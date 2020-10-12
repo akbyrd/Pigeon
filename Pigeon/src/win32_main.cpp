@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 // TODO: #include <minwindef.h>?
 #include <Windows.h>
+#include <Tpcshrd.h>
 // TODO: Switch to WRL ComPtr
 #include <atlbase.h> // CComPtr
 
@@ -225,7 +226,7 @@ Initialize(InitPhase& phase,
 b32
 UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCount, HANDLE& singleInstanceMutex)
 {
-	bool unregisterFailed = false;
+	b32 unregisterFailed = false;
 	for (u8 i = 0; i < hotkeyCount; i++)
 	{
 		if (hotkeys[i].registered)
@@ -372,7 +373,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Message loop
-	int returnValue = -1;
+	i32 returnValue = -1;
 	if (phase >= InitPhase::WindowCreated)
 	{
 		MSG msg = {};
@@ -436,6 +437,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					case WM_TIMER:
 					case WM_TIMECHANGE:
 					case WM_PROCESSQUEUE:
+					case WM_TABLET_ADDED:
+					case WM_TABLET_DELETED:
 						break;
 
 					// TODO: WM_FONTCHANGE (29) - when installing fonts

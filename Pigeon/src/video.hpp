@@ -9,6 +9,13 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 	    && lhs->dmDisplayFlags == rhs->dmDisplayFlags;
 }
 
+template <typename T>
+inline T
+Abs(T value)
+{
+	return value >= 0 ? value : (T) -1 * value;
+}
+
 // NOTE: CoInitialize is assumed to have been called.
 b32
 CycleRefreshRate(NotificationWindow* notification)
@@ -31,10 +38,10 @@ CycleRefreshRate(NotificationWindow* notification)
 		DEVMODEW displaySettings = {};
 		displaySettings.dmSize = sizeof(displaySettings);
 
-		bool foundDesiredFrequency = false;
+		b32 useNextFrequency = false;
 
 		// NOTE: The OS caches display information when i == 0. Other values use the cache.
-		int i = 0;
+		i32 i = 0;
 		while (EnumDisplaySettingsExW(nullptr, i++, &displaySettings, EDS_RAWMODE))
 		{
 			u32 requiredFlags = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
@@ -44,29 +51,30 @@ CycleRefreshRate(NotificationWindow* notification)
 				continue;
 			}
 
-			if (AreDisplayModesEqualIgnoringFrequency(&displaySettings, &currentDisplaySettings))
+			if (!AreDisplayModesEqualIgnoringFrequency(&displaySettings, &currentDisplaySettings)) continue;
+			if (displaySettings.dmDisplayFrequency < 60) continue;
+
+			if (newDisplaySettings.dmDisplayFrequency == 0)
 			{
-				if (displaySettings.dmDisplayFrequency < 60) continue;
+				newDisplaySettings.dmDisplayFrequency = displaySettings.dmDisplayFrequency;
+			}
 
-				if (!foundDesiredFrequency)
-				{
-					foundDesiredFrequency = true;
-					newDisplaySettings.dmDisplayFrequency = displaySettings.dmDisplayFrequency;
-				}
+			if (Abs(displaySettings.dmDisplayFrequency - currentDisplaySettings.dmDisplayFrequency) <= 1)
+			{
+				useNextFrequency = true;
+				continue;
+			}
 
-				if (displaySettings.dmDisplayFrequency == currentDisplaySettings.dmDisplayFrequency)
-				{
-					// Set desired frequency again next time around.
-					foundDesiredFrequency = false;
-				}
+			if (useNextFrequency)
+			{
+				newDisplaySettings.dmDisplayFrequency = displaySettings.dmDisplayFrequency;
+				break;
 			}
 		}
 
-		// This can occur e.g. when the display has only one desirable frequency.
-		if (!foundDesiredFrequency)
+		if (newDisplaySettings.dmDisplayFrequency == 0)
 		{
-			NotifyFormat(notification, L"%u Hz", currentDisplaySettings.dmDisplayFrequency);
-			return false;
+			newDisplaySettings.dmDisplayFrequency = currentDisplaySettings.dmDisplayFrequency;
 		}
 	}
 

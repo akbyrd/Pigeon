@@ -686,7 +686,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 						}
 					}
 
-					bool isHidden = state->animPhase == AnimPhase::Hidden;
+					b32 isHidden = state->animPhase == AnimPhase::Hidden;
 
 					if (state->isDirty || alphaChanged)
 					{
@@ -723,4 +723,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+
+	#undef NOTIFY_IF
+	#undef NOTIFY_WINDOWS_IF
 }
