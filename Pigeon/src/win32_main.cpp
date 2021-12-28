@@ -26,7 +26,6 @@ b32 RunCommand(NotificationWindow*, c8*, u16);
 
 // TODO: Pigeon image on startup
 // TODO: Pigeon SFX
-// TODO: Add a permanent log file
 // TODO: Line on notification indicating queue count (colored if warning/error exists?)
 
 // TODO: Hotkey to restart
@@ -51,6 +50,7 @@ enum struct InitPhase
 	SingleInstanceEnforced,
 	HotkeysRegistered,
 	SystemsInitialized,
+	LogFileCreated,
 };
 
 struct Hotkey
@@ -67,7 +67,7 @@ b32
 Initialize(InitPhase& phase,
            NotificationWindow& notification, HINSTANCE hInstance,
            u64& startTime, u32& processID, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex,
-           Hotkey* hotkeys, u8 hotkeyCount)
+           Hotkey* hotkeys, u8 hotkeyCount, HANDLE& logFile)
 {
 	// Create window
 	{
@@ -220,6 +220,29 @@ Initialize(InitPhase& phase,
 	}
 
 
+	// Open log file
+	{
+		logFile = CreateFileW(
+			L"pigeon.log",
+			GENERIC_WRITE,
+			// TODO: Test write and delete while file is open
+			FILE_SHARE_READ | FILE_SHARE_DELETE,
+			nullptr,
+			// TODO: Change this back to CREATE_ALWAYS at some point
+			OPEN_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			nullptr
+		);
+		if (!logFile)
+		{
+			NotifyWindowsError(&notification, L"CreateFile failed");
+			return false;
+		}
+
+		phase = InitPhase::LogFileCreated;
+	}
+
+
 	return true;
 }
 
@@ -359,11 +382,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	u32    processID           = 0;
 	u32    WM_NEWINSTANCE      = 0;
 	HANDLE singleInstanceMutex = nullptr;
+	HANDLE logFile             = nullptr;
 
 	Initialize(phase,
 		notification, hInstance,
 		startTime, processID, WM_NEWINSTANCE, singleInstanceMutex,
-		hotkeys, ArrayCount(hotkeys)
+		hotkeys, ArrayCount(hotkeys), logFile
 	);
 
 
@@ -439,11 +463,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					case WM_PROCESSQUEUE:
 					case WM_TABLET_ADDED:
 					case WM_TABLET_DELETED:
+					case WM_FONTCHANGE:
+					case WM_DWMCOLORIZATIONCOLORCHANGED:
+					// Undocumented, happens when toggling high contrast mode. Closest to WM_THEMECHANGED (0x31A)
+					case 0x31B:
 						break;
 
-					// TODO: WM_FONTCHANGE (29) - when installing fonts
-					// TODO: WM_KEYDOWN/UP (256, 257) - Somehow we're getting key messages, but only
-					// sometimes
 					// NOTE: Use msg.message,wm in the Watch window to see the message name!
 					default:
 					{
@@ -460,6 +485,20 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							}
 
 							NotifyFormat(&notification, L"Unexpected message: %s, w:0x%llX", Severity::Warning, messageName, msg.wParam);
+
+							c16 log[32];
+							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%X), w:0x%llX\n", msg.message, msg.wParam);
+							if (logLen < 0)
+							{
+								NotifyFormat(&notification, L"Log format failed", Severity::Warning);
+								break;
+							}
+
+							// NOTE: This still succeeds if the file is deleted. Strange.
+							i32 logBytes = logLen * sizeof(log[0]);
+							b32 result = WriteFile(logFile, log, logBytes, nullptr, nullptr);
+							if (!result)
+								NotifyFormat(&notification, L"Log write failed", Severity::Warning);
 						}
 						break;
 					}
@@ -470,6 +509,9 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Cleanup
+	if (phase >= InitPhase::LogFileCreated)
+		CloseHandle(logFile);
+
 	if (phase >= InitPhase::SystemsInitialized)
 		// TODO: This can enter a modal loop and dispatch messages. Understand the implications of
 		// this.
