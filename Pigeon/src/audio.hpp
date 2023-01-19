@@ -105,6 +105,14 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 
 	// Notification
 	{
+		const wchar_t* genericNames[] = {
+			L"Speaker",
+			L"Headset",
+			L"Headset Earphone",
+			L"Headphones",
+			L"Microphone",
+		};
+
 		CComPtr<IMMDevice> device;
 		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
 		NOTIFY_IF_FAILED(L"GetDevice failed", hr, return false);
@@ -118,6 +126,22 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 
 		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
 		NOTIFY_IF_FAILED(L"GetValue failed", hr, return false);
+
+		for (const c16* genericName : genericNames)
+		{
+			if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
+			{
+				hr = PropVariantClear(&deviceDescription);
+				NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, return false);
+
+				PropVariantInit(&deviceDescription);
+
+				hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
+				NOTIFY_IF_FAILED(L"GetValue failed", hr, return false);
+
+				break;
+			}
+		}
 
 		Notify(notification, deviceDescription.pwszVal);
 
