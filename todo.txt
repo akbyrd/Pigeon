@@ -1,0 +1,18 @@
+Don't overlap with media overlay
+Open volume mixer
+Improve name handling
+Log file doesn't work in startup (also auto-opens)
+Better multi-monitor handling
+	Show on all desktops?
+	Show on current desktop?
+Sometimes prevents shutdown
+Handle messages:
+	WM_SYSCOLORCHAGED (created a vsix project)
+	Use built-in function to get window message names
+Bluetoother device connection/disconnection
+Change the queue behavior
+	Multiple windows?
+	String key for each "channel"
+	Different channels use different windows
+	Same channel reuses same window
+	Colored bar for queued messages?

@@ -361,7 +361,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{ 1, MOD_CONTROL, VK_F9 , &OpenAudioPlaybackDevicesWindow   },
 		{ 2,           0, VK_F10, &CycleAudioRecordingDevice        },
 		{ 3, MOD_CONTROL, VK_F10, &OpenAudioRecordingDevicesWindow  },
-		{ 4,           0, VK_F11, &CycleRefreshRate                 },
+		{ 4,           0, VK_F11, &SetMaximumRefreshRate            },
 		{ 5, MOD_CONTROL, VK_F11, &OpenDisplayAdapterSettingsWindow },
 
 		#if false
