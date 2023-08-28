@@ -40,3 +40,9 @@ StringCopy(c8* dst, c8* src)
 
 	return (u32) (dst - start);
 }
+
+struct v2i
+{
+	i32 x;
+	i32 y;
+};

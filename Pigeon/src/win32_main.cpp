@@ -8,7 +8,7 @@
 #include "shared.hpp"
 #include "notification.hpp"
 // TODO: Yuck.
-b32 RunCommand(NotificationWindow*, c8*, u16);
+b32 RunCommand(NotificationWindow*, c8*);
 #include "audio.hpp"
 #include "video.hpp"
 #include "WindowMessageStrings.h"
@@ -55,24 +55,31 @@ enum struct InitPhase
 
 struct Hotkey
 {
-	i32 id;
 	u32 modifier;
 	u32 key;
 	b32 (*execute)(NotificationWindow*);
 
+	i32 id;
 	b32 registered;
 };
 
 b32
-Initialize(InitPhase& phase,
-           NotificationWindow& notification, HINSTANCE hInstance,
-           u64& startTime, u32& processID, u32& WM_NEWINSTANCE, HANDLE& singleInstanceMutex,
-           Hotkey* hotkeys, u8 hotkeyCount, HANDLE& logFile)
+Initialize(
+	InitPhase& phase,
+	NotificationWindow& notification,
+	HINSTANCE hInstance,
+	u64& startTime,
+	u32& processID,
+	u32& WM_NEWINSTANCE,
+	HANDLE& singleInstanceMutex,
+	Hotkey* hotkeys,
+	u8 hotkeyCount,
+	HANDLE& logFile)
 {
 	// Create window
 	{
 		WNDCLASSW windowClass = {};
-		windowClass.style         = 0; //CS_DROPSHADOW
+		windowClass.style         = 0;
 		windowClass.lpfnWndProc   = NotificationWndProc;
 		windowClass.cbClsExtra    = 0;
 		windowClass.cbWndExtra    = sizeof(&notification);
@@ -281,42 +288,12 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 };
 
 b32
-RunCommand(NotificationWindow* notification, c8* args, u16 argsLength)
+RunCommand(NotificationWindow* notification, c8* command)
 {
-	// NOTE: The system directory path can't exceed MAX_PATH, we can never overflow the buffer as
-	// long as the options being passed in are under the extra 256 being allocated so I'm not going
-	// to bother checking after every operation.
-	#define MAX_COMMAND_LENGTH 256
-	const u16 maxTotalLength = MAX_PATH + MAX_COMMAND_LENGTH;
-
-	if (argsLength >= MAX_COMMAND_LENGTH)
-	{
-		Notify(notification, L"ExecuteCommand failed. Command too long.");
-		return false;
-	}
-
-	c8 commandLine[maxTotalLength];
-	c8* writePointer = commandLine;
-
-	writePointer += StringCopy(writePointer, "\"");
-
-	u16 systemDirCount = GetSystemDirectoryA(writePointer, (u32) (maxTotalLength-(writePointer-commandLine)));
-	if (systemDirCount == 0)
-	{
-		NotifyWindowsError(notification, L"GetSystemDirectory failed");
-		return false;
-	}
-	writePointer += systemDirCount;
-
-	// NOTE: Path does not end with a backslash unless the system directory is the root directory
-	if (*writePointer != '\\')
-		writePointer += StringCopy(writePointer, "\\");
-
-	writePointer += StringCopy(writePointer, args);
-
-	u32 uResult = WinExec(commandLine, SW_NORMAL);
+	u32 uResult = WinExec(command, SW_NORMAL);
 	if (uResult < 32)
 	{
+		// TODO: Can we get an error message from the result value?
 		NotifyFormat(notification, L"WinExec failed: %u", Severity::Warning, uResult);
 		return false;
 	}
@@ -357,22 +334,27 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	Hotkey hotkeys[] = {
-		{ 0,           0, VK_F9 , &CycleAudioPlaybackDevice         },
-		{ 1, MOD_CONTROL, VK_F9 , &OpenAudioPlaybackDevicesWindow   },
-		{ 2,           0, VK_F10, &CycleAudioRecordingDevice        },
-		{ 3, MOD_CONTROL, VK_F10, &OpenAudioRecordingDevicesWindow  },
-		{ 4,           0, VK_F11, &SetMaximumRefreshRate            },
-		{ 5, MOD_CONTROL, VK_F11, &OpenDisplayAdapterSettingsWindow },
+		{           0, VK_F9 , &CycleAudioPlaybackDevice         },
+		{ MOD_CONTROL, VK_F9 , &OpenAudioPlaybackDevicesWindow   },
+		{           0, VK_F10, &CycleAudioRecordingDevice        },
+		{ MOD_CONTROL, VK_F10, &OpenAudioRecordingDevicesWindow  },
+		{           0, VK_F11, &SetMaximumRefreshRate            },
+		{ MOD_CONTROL, VK_F11, &OpenDisplayAdapterSettingsWindow },
+		{           0, VK_F12, nullptr                           },
+		{ MOD_CONTROL, VK_F12, &OpenVolumeMixerWindow            },
 
 		#if false
 		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
-		{ 6,           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
-		{ 7,           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
-		{ 8,           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
-		{ 9,           0, VK_F12, &RestartApplication                                               },
+		{           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
+		{           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
+		{           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
+		{           0, VK_F12, &RestartApplication                                               },
 		#undef LAMBDA
 		#endif
 	};
+
+	for (i32 i = 0; i < ArrayCount(hotkeys); i++)
+		hotkeys[i].id = i;
 
 
 	// Initialize

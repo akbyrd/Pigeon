@@ -193,8 +193,8 @@ CycleAudioPlaybackDevice(NotificationWindow* notification)
 b32
 OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
 {
-	c8 command[] = "control.exe\" /name Microsoft.Sound /page Playback";
-	return RunCommand(notification, command, ArrayCount(command));
+	c8 command[] = "control.exe /name Microsoft.Sound /page Playback";
+	return RunCommand(notification, command);
 }
 
 b32
@@ -207,6 +207,33 @@ CycleAudioRecordingDevice(NotificationWindow* notification)
 b32
 OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
 {
-	c8 command[] = "control.exe\" /name Microsoft.Sound /page Recording";
-	return RunCommand(notification, command, ArrayCount(command));
+	c8 command[] = "control.exe /name Microsoft.Sound /page Recording";
+	return RunCommand(notification, command);
+}
+
+b32
+OpenVolumeMixerWindow(NotificationWindow* notification)
+{
+	// Command line options (Windows 10 22H2)
+	//
+	// sndvol <options> <coordinates>
+	//
+	// -f Volume control (single master slider)
+	// -m Unknown, used by systray, probably "mixer"
+	// -p Select which devices have a separate slider
+	// -s Unknown, doesn't show up
+	//
+	// Coordinates y * 65536 + x
+
+	v2i GetCurrentResolution();
+	v2i resolution = GetCurrentResolution();
+
+	// Mostly just copying what Windows does by default. It passes coordinates that are offscreen and
+	// then either Windows or SndVol clamps the window to keep it visible. Windows actually uses a
+	// 10/11 pixel offset, but the net result is exactly the same.
+	i32 coords = resolution.y * 65536 + resolution.x;
+
+	c8 command[1024];
+	snprintf(command, ArrayCount(command), "SndVol.exe -m %i", coords);
+	return RunCommand(notification, command);
 }

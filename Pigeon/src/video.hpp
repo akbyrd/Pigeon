@@ -1,4 +1,4 @@
-inline b32
+b32
 AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 {
 	// NOTE: Only dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, and dmDisplayFrequency are
@@ -10,10 +10,24 @@ AreDisplayModesEqualIgnoringFrequency(DEVMODE* lhs, DEVMODE* rhs)
 }
 
 template <typename T>
-inline T
+T
 Abs(T value)
 {
 	return value >= 0 ? value : (T) -1 * value;
+}
+
+v2i GetCurrentResolution()
+{
+	DEVMODEW currentDisplaySettings = {};
+	currentDisplaySettings.dmSize = sizeof(currentDisplaySettings);
+
+	// NOTE: This and the Ex variant only fail when iModeNum is out of range
+	EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &currentDisplaySettings);
+
+	v2i result = {};
+	result.x = currentDisplaySettings.dmPelsWidth;
+	result.y = currentDisplaySettings.dmPelsHeight;
+	return result;
 }
 
 // NOTE: CoInitialize is assumed to have been called.
@@ -78,6 +92,6 @@ SetMaximumRefreshRate(NotificationWindow* notification)
 b32
 OpenDisplayAdapterSettingsWindow(NotificationWindow* notification)
 {
-	c8 command[] = "rundll32.exe\" display.dll,ShowAdapterSettings";
-	return RunCommand(notification, command, ArrayCount(command));
+	c8 command[] = "rundll32.exe display.dll,ShowAdapterSettings";
+	return RunCommand(notification, command);
 }
