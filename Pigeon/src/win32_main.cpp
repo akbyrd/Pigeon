@@ -10,7 +10,7 @@
 #include "shared.hpp"
 #include "notification.hpp"
 // TODO: Yuck.
-b32 RunCommand(NotificationWindow*, c8*);
+b32 RunCommand(NotificationState*, c8*);
 #include "audio.hpp"
 #include "video.hpp"
 #include "WindowMessageStrings.h"
@@ -59,7 +59,7 @@ struct Hotkey
 {
 	u32 modifier;
 	u32 key;
-	b32 (*execute)(NotificationWindow*);
+	b32 (*execute)(NotificationState*);
 
 	i32 id;
 	b32 registered;
@@ -68,7 +68,7 @@ struct Hotkey
 b32
 Initialize(
 	InitPhase& phase,
-	NotificationWindow& notification,
+	NotificationState* state,
 	HINSTANCE hInstance,
 	u64& startTime,
 	u32& processID,
@@ -84,7 +84,7 @@ Initialize(
 		windowClass.style         = 0;
 		windowClass.lpfnWndProc   = NotificationWndProc;
 		windowClass.cbClsExtra    = 0;
-		windowClass.cbWndExtra    = sizeof(&notification);
+		windowClass.cbWndExtra    = sizeof(state);
 		windowClass.hInstance     = hInstance;
 		windowClass.hIcon         = nullptr;
 		windowClass.hCursor       = nullptr;
@@ -93,33 +93,25 @@ Initialize(
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		if (classAtom == INVALID_ATOM)
-		{
-			NotifyWindowsError(&notification, L"RegisterClassW failed");
-			return false;
-		}
+		NOTIFY_WINDOWS_IF(classAtom == INVALID_ATOM, L"RegisterClassW failed", Severity::Error, return false);
 
-		notification.hwnd = CreateWindowExW(
+		HWND hwnd = CreateWindowExW(
 			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
 			windowClass.lpszClassName,
 			L"Pigeon Notification Window",
 			WS_POPUP,
-			notification.windowPosition.x,
-			notification.windowPosition.y,
-			notification.windowSize.cx,
-			notification.windowSize.cy,
+			state->windowPosition.x,
+			state->windowPosition.y,
+			state->windowSize.cx,
+			state->windowSize.cy,
 			nullptr,
 			nullptr,
 			hInstance,
-			&notification
+			state
 		);
-		if (notification.hwnd == INVALID_HANDLE_VALUE)
-		{
-			notification.hwnd = nullptr;
-			NotifyWindowsError(&notification, L"CreateWindowExW failed");
-			return false;
-		}
+		NOTIFY_IF_INVALID_HANDLE(L"CreateWindowExW failed", hwnd, Severity::Error, return false);
 
+		state->hwnd = hwnd;
 		phase = InitPhase::WindowCreated;
 	}
 
@@ -137,11 +129,7 @@ Initialize(
 		FILETIME win32_startFileTime = {};
 		FILETIME unusued;
 		b32 success = GetProcessTimes(hProcess, &win32_startFileTime, &unusued, &unusued, &unusued);
-		if (!success)
-		{
-			NotifyWindowsError(&notification, L"GetProcessTimes failed");
-			return false;
-		}
+		NOTIFY_WINDOWS_IF(!success, L"GetProcessTimes failed", Severity::Error, return false);
 
 		ULARGE_INTEGER win32_startTime = {};
 		win32_startTime.LowPart  = win32_startFileTime.dwLowDateTime;
@@ -152,29 +140,17 @@ Initialize(
 		processID = GetProcessId(hProcess);
 
 		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
-		if (WM_NEWINSTANCE == 0)
-		{
-			NotifyWindowsError(&notification, L"RegisterWindowMessage failed");
-			return false;
-		}
+		NOTIFY_WINDOWS_IF(!WM_NEWINSTANCE, L"RegisterWindowMessage failed", Severity::Error, return false);
 
 		// TODO: Namespace?
 		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
-		if (!singleInstanceMutex)
-		{
-			NotifyWindowsError(&notification, L"CreateMutex failed");
-			return false;
-		}
+		NOTIFY_WINDOWS_IF(!singleInstanceMutex, L"CreateMutex failed", Severity::Error, return false);
 
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			// TODO: Better to enumerate processes instead of broadcasting
 			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, processID);
-			if (!success)
-			{
-				NotifyWindowsError(&notification, L"PostMessage failed");
-				return false;
-			}
+			NOTIFY_WINDOWS_IF(!success, L"PostMessage failed", Severity::Error, return false);
 
 			// TODO: Not handling messages while waiting
 			u32 uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
@@ -182,11 +158,11 @@ Initialize(
 			{
 				singleInstanceMutex = nullptr;
 
-				NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_FAILED");
+				NotifyWindowsError(state, L"WaitForSingleObject WAIT_FAILED", Severity::Error);
 				return false;
 			}
 
-			if (uResult == WAIT_ABANDONED) NotifyWindowsError(&notification, L"WaitForSingleObject WAIT_ABANDON", Severity::Warning);
+			NOTIFY_WINDOWS_IF(uResult == WAIT_ABANDONED, L"WaitForSingleObject WAIT_ABANDON", Severity::Warning, NOTHING);
 		}
 
 		phase = InitPhase::SingleInstanceEnforced;
@@ -200,10 +176,10 @@ Initialize(
 			b32 success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
 			if (!success)
 			{
-				NotifyWindowsError(&notification, L"RegisterHotKey failed");
+				NotifyWindowsError(state, L"RegisterHotKey failed", Severity::Error);
 
-				b32 UnregisterHotkeys(NotificationWindow&, Hotkey*, u8, HANDLE&);
-				success = UnregisterHotkeys(notification, hotkeys, hotkeyCount, singleInstanceMutex);
+				b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8, HANDLE&);
+				success = UnregisterHotkeys(state, hotkeys, hotkeyCount, singleInstanceMutex);
 				if (!success) phase = InitPhase::HotkeysRegistered;
 
 				return false;
@@ -219,11 +195,7 @@ Initialize(
 	// Initialize systems
 	{
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-		if (FAILED(hr))
-		{
-			NotifyWindowsError(&notification, L"CoInitializeEx failed", Severity::Error, hr);
-			return false;
-		}
+		NOTIFY_IF_FAILED(L"CoInitializeEx failed", hr, Severity::Error, return false);
 
 		phase = InitPhase::SystemsInitialized;
 	}
@@ -233,28 +205,24 @@ Initialize(
 	{
 		c16* logFolderPath = nullptr;
 		HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &logFolderPath);
-		if (FAILED(hr))
-		{
-			NotifyWindowsError(&notification, L"SHGetFolderPath failed");
-			return false;
-		}
+		NOTIFY_IF_FAILED(L"SHGetFolderPath failed", hr, Severity::Error, return false);
 
-		swprintf(notification.logFilePath, ArrayCount(notification.logFilePath), L"%s\\Pigeon", logFolderPath);
-		b32 result = CreateDirectoryW(notification.logFilePath, nullptr);
+		swprintf(state->logFilePath, ArrayCount(state->logFilePath), L"%s\\Pigeon", logFolderPath);
+		b32 result = CreateDirectoryW(state->logFilePath, nullptr);
 		if (!result)
 		{
 			u32 error = GetLastError();
 			if (error != ERROR_ALREADY_EXISTS)
 			{
-				NotifyWindowsError(&notification, L"Failed to create log file path", Severity::Warning, error);
+				NotifyWindowsError(state, L"Failed to create log file path", Severity::Warning, error);
 				return false;
 			}
 		}
 
-		wcscat_s(notification.logFilePath, ArrayCount(notification.logFilePath), L"\\pigeon.log");
+		wcscat_s(state->logFilePath, ArrayCount(state->logFilePath), L"\\pigeon.log");
 
 		logFile = CreateFileW(
-			notification.logFilePath,
+			state->logFilePath,
 			GENERIC_WRITE,
 			// TODO: Test write and delete while file is open
 			FILE_SHARE_READ | FILE_SHARE_DELETE,
@@ -267,8 +235,8 @@ Initialize(
 		);
 		if (logFile == INVALID_HANDLE_VALUE)
 		{
-			notification.logFilePath[0] = '\0';
-			NotifyWindowsError(&notification, L"CreateFile failed", Severity::Warning);
+			state->logFilePath[0] = '\0';
+			NotifyWindowsError(state, L"CreateFile failed", Severity::Warning);
 			return false;
 		}
 
@@ -280,33 +248,25 @@ Initialize(
 }
 
 b32
-OpenLogFile(NotificationWindow* notification)
+OpenLogFile(NotificationState* state)
 {
-	#define NOTIFY_IF(expression, string, reaction) \
-		if (expression) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		} \
-
-
-	NOTIFY_IF(!notification->logFilePath[0], L"No log file", return false);
+	NOTIFY_IF(!state->logFilePath[0], L"No log file", Severity::Warning, return false);
 
 	// The return value is treated as an int. It's not a real HINSTANCE
 	HINSTANCE result = ShellExecuteW(
 		nullptr,
 		L"open",
-		notification->logFilePath,
+		state->logFilePath,
 		nullptr,
 		nullptr,
 		SW_SHOW);
-	NOTIFY_IF((i64) result < 32, L"ShellExecuteW failed", return false);
+	NOTIFY_IF((i64) result < 32, L"ShellExecuteW failed", Severity::Warning, return false);
 
 	return true;
 }
 
 b32
-UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCount, HANDLE& singleInstanceMutex)
+UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HANDLE& singleInstanceMutex)
 {
 	b32 unregisterFailed = false;
 	for (u8 i = 0; i < hotkeyCount; i++)
@@ -317,7 +277,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 			if (!success)
 			{
 				unregisterFailed = true;
-				NotifyWindowsError(&notification, L"UnregisterHotKey failed", Severity::Warning);
+				NotifyWindowsError(state, L"UnregisterHotKey failed", Severity::Warning);
 				continue;
 			}
 
@@ -328,11 +288,7 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 
 
 	b32 success = ReleaseMutex(singleInstanceMutex);
-	if (!success)
-	{
-		NotifyWindowsError(&notification, L"ReleaseMutex failed", Severity::Warning);
-		return false;
-	}
+	NOTIFY_WINDOWS_IF(!success, L"ReleaseMutex failed", Severity::Warning, return false);
 
 	singleInstanceMutex = nullptr;
 
@@ -340,15 +296,11 @@ UnregisterHotkeys(NotificationWindow& notification, Hotkey* hotkeys, u8 hotkeyCo
 };
 
 b32
-RunCommand(NotificationWindow* notification, c8* command)
+RunCommand(NotificationState* state, c8* command)
 {
 	u32 uResult = WinExec(command, SW_NORMAL);
-	if (uResult < 32)
-	{
-		// TODO: Can we get an error message from the result value?
-		NotifyFormat(notification, L"WinExec failed: %u", Severity::Warning, uResult);
-		return false;
-	}
+	// TODO: Can we get an error message from the result value?
+	NOTIFY_IF_F(uResult < 32, L"WinExec failed: %u", Severity::Warning, return false, uResult);
 
 	return true;
 }
@@ -356,31 +308,33 @@ RunCommand(NotificationWindow* notification, c8* command)
 i32 CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
-	NotificationWindow notification = {};
+	NotificationState notificationState = {};
+	NotificationState* state = &notificationState;
+
 	{
 		// NOTE: QPC and QPF are documented as not being able to fail on XP+
 		LARGE_INTEGER win32_tickFrequency = {};
 		QueryPerformanceFrequency(&win32_tickFrequency);
 		f64 tickFrequency = (f64) win32_tickFrequency.QuadPart;
 
-		notification.windowMinWidth   = 200;
-		notification.windowMaxWidth   = 600;
-		notification.windowSize       = {200, 60};
-		notification.windowPosition   = { 50, 60};
-		notification.backgroundColor  = RGBA(16, 16, 16, 242);
-		notification.textColorNormal  = RGB(255, 255, 255);
-		notification.textColorError   = RGB(255, 0, 0);
-		notification.textColorWarning = RGB(255, 255, 0);
-		notification.textPadding      = 20;
-		notification.animShowTicks    = 0.1 * tickFrequency;
-		notification.animIdleTicks    = 2.0 * tickFrequency;
-		notification.animHideTicks    = 1.0 * tickFrequency;
-		notification.animUpdateMS     = 1000 / 30;
-		notification.timerID          = 1;
-		notification.tickFrequency    = tickFrequency;
+		state->windowMinWidth   = 200;
+		state->windowMaxWidth   = 600;
+		state->windowSize       = {200, 60};
+		state->windowPosition   = { 50, 60};
+		state->backgroundColor  = RGBA(16, 16, 16, 242);
+		state->textColorNormal  = RGB(255, 255, 255);
+		state->textColorError   = RGB(255, 0, 0);
+		state->textColorWarning = RGB(255, 255, 0);
+		state->textPadding      = 20;
+		state->animShowTicks    = 0.1 * tickFrequency;
+		state->animIdleTicks    = 2.0 * tickFrequency;
+		state->animHideTicks    = 1.0 * tickFrequency;
+		state->animUpdateMS     = 1000 / 30;
+		state->timerID          = 1;
+		state->tickFrequency    = tickFrequency;
 
 		// DEBUG:
-		Notify(&notification, L"Started!");
+		Notify(state, L"Started!");
 	}
 
 
@@ -397,10 +351,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{ MOD_CONTROL, VK_F12, &OpenVolumeMixerWindow            },
 
 		#if false
-		#define LAMBDA(x) [](NotificationWindow* notification) -> b32 { x; return true; }
-		{           0, VK_F9 , LAMBDA(Notify(notification, L"DEBUG Message", Severity::Info))    },
-		{           0, VK_F10, LAMBDA(Notify(notification, L"DEBUG Warning", Severity::Warning)) },
-		{           0, VK_F11, LAMBDA(Notify(notification, L"DEBUG Error"  , Severity::Error))   },
+		#define LAMBDA(x) [](NotificationState* state) -> b32 { x; return true; }
+		{           0, VK_F9 , LAMBDA(Notify(state, L"DEBUG Message", Severity::Info))    },
+		{           0, VK_F10, LAMBDA(Notify(state, L"DEBUG Warning", Severity::Warning)) },
+		{           0, VK_F11, LAMBDA(Notify(state, L"DEBUG Error"  , Severity::Error))   },
 		{           0, VK_F12, &RestartApplication                                               },
 		#undef LAMBDA
 		#endif
@@ -420,7 +374,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	HANDLE logFile             = nullptr;
 
 	Initialize(phase,
-		notification, hInstance,
+		state, hInstance,
 		startTime, processID, WM_NEWINSTANCE, singleInstanceMutex,
 		hotkeys, ArrayCount(hotkeys), logFile
 	);
@@ -428,7 +382,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-	if (!success) NotifyWindowsError(&notification, L"SetPriorityClass failed", Severity::Warning);
+	NOTIFY_WINDOWS_IF(!success, L"SetPriorityClass failed", Severity::Warning, NOTHING);
 
 
 	// Message loop
@@ -449,7 +403,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 			// TODO: This causes an interesting queue overflow scenario. Probably related to the bug in
 			// the todo list
-			//NotifyFormat(&notification, L"Ima overflowin' ur bufferz", Severity::Warning);
+			//NotifyFormat(state, L"Ima overflowin' ur bufferz", Severity::Warning);
 
 			if (msg.message == WM_NEWINSTANCE)
 			{
@@ -461,13 +415,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				{
 					if (singleInstanceMutex)
 					{
-						UnregisterHotkeys(notification, hotkeys, ArrayCount(hotkeys), singleInstanceMutex);
+						UnregisterHotkeys(state, hotkeys, ArrayCount(hotkeys), singleInstanceMutex);
 					}
 
-					notification.windowPosition.y += notification.windowSize.cy + 10;
-					UpdateWindowPositionAndSize(&notification);
+					state->windowPosition.y += state->windowSize.cy + 10;
+					UpdateWindowPositionAndSize(state);
 
-					Notify(&notification, L"There can be only one!", Severity::Error);
+					Notify(state, L"There can be only one!", Severity::Error);
 				}
 			}
 			else
@@ -480,7 +434,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						{
 							if (msg.wParam == hotkeys[i].id)
 							{
-								hotkeys[i].execute(&notification);
+								hotkeys[i].execute(state);
 								break;
 							}
 						}
@@ -519,21 +473,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 								messageName = buffer;
 							}
 
-							NotifyFormat(&notification, L"Unexpected message: %s, w:0x%1llX", Severity::Warning, messageName, msg.wParam);
+							NotifyFormat(state, L"Unexpected message: %s, w:0x%1llX", Severity::Warning, messageName, msg.wParam);
 
 							c16 log[32];
 							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%1X), w:0x%1llX\n", msg.message, msg.wParam);
-							if (logLen < 0)
-							{
-								NotifyFormat(&notification, L"Log format failed", Severity::Warning);
-								break;
-							}
+							NOTIFY_IF(logLen < 0, L"Log format failed", Severity::Warning, break);
 
 							// NOTE: This still succeeds if the file is deleted. Strange.
 							i32 logBytes = logLen * sizeof(log[0]);
 							b32 result = WriteFile(logFile, log, logBytes, nullptr, nullptr);
-							if (!result)
-								NotifyFormat(&notification, L"Log write failed", Severity::Warning);
+							NOTIFY_IF(!result, L"Log write failed", Severity::Warning, NOTHING);
 						}
 						break;
 					}
@@ -553,10 +502,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		CoUninitialize();
 
 	// Show remaining errors
-	for (u8 i = 0; i < notification.queueCount; i++)
+	for (u8 i = 0; i < state->queueCount; i++)
 	{
-		u8 actualIndex = LogicalToActualIndex(&notification, i);
-		Notification note = notification.queue[actualIndex];
+		u8 actualIndex = LogicalToActualIndex(state, i);
+		Notification note = state->queue[actualIndex];
 
 		if (note.severity == Severity::Error)
 		{

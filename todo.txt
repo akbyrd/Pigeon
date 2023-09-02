@@ -1,4 +1,3 @@
-Error macros in win32_main.cpp
 Improve device name handling
 Better multi-monitor handling
 	Show on all desktops?

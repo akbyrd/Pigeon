@@ -15,31 +15,14 @@ enum struct AudioType
 };
 
 b32
-CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
+CycleAudioDevice(NotificationState* state, AudioType audioType)
 {
 	// NOTE: CoInitialize is assumed to have been called.
-	HRESULT hr;
-
-
-	#define NOTIFY_IF(expression, string, reaction) \
-		if (expression) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		} \
-
-	#define NOTIFY_IF_FAILED(string, hr, reaction) \
-		if (FAILED(hr)) \
-		{ \
-			NotifyWindowsError(notification, string, Severity::Warning, hr); \
-			reaction; \
-		}
-
 
 	// Shared
 	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
-	hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
-	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
+	HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+	NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, Severity::Warning, return false);
 
 	EDataFlow dataFlow = (EDataFlow) -1;
 	switch (audioType)
@@ -55,12 +38,12 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	u32 deviceCount;
 	{
 		hr = deviceEnumerator->EnumAudioEndpoints(dataFlow, DEVICE_STATE_ACTIVE, &deviceCollection);
-		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, return false);
+		NOTIFY_IF_FAILED(L"EnumAudioEndpoints failed", hr, Severity::Warning, return false);
 
 		hr = deviceCollection->GetCount(&deviceCount);
-		NOTIFY_IF_FAILED(L"GetCount failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetCount failed", hr, Severity::Warning, return false);
 
-		NOTIFY_IF(deviceCount == 0, L"No devices found", return true);
+		NOTIFY_IF(deviceCount == 0, L"No devices found", Severity::Warning, return true);
 	}
 
 
@@ -69,10 +52,10 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	{
 		CComPtr<IMMDevice> currentDevice;
 		hr = deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eConsole, &currentDevice);
-		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, Severity::Warning, return false);
 
 		hr = currentDevice->GetId(&currentDefaultDeviceID);
-		NOTIFY_IF_FAILED(L"GetId failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetId failed", hr, Severity::Warning, return false);
 	}
 
 
@@ -86,11 +69,11 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 
 			CComPtr<IMMDevice> device;
 			hr = deviceCollection->Item(index, &device);
-			NOTIFY_IF_FAILED(L"Item failed", hr, continue);
+			NOTIFY_IF_FAILED(L"Item failed", hr, Severity::Warning, continue);
 
 			CComHeapPtr<c16> deviceID;
 			hr = device->GetId(&deviceID);
-			NOTIFY_IF_FAILED(L"GetId failed", hr, continue);
+			NOTIFY_IF_FAILED(L"GetId failed", hr, Severity::Warning, continue);
 
 			if (useNextDevice)
 			{
@@ -118,38 +101,38 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 
 		CComPtr<IMMDevice> device;
 		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
-		NOTIFY_IF_FAILED(L"GetDevice failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetDevice failed", hr, Severity::Warning, return false);
 
 		CComPtr<IPropertyStore> propertyStore;
 		hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
-		NOTIFY_IF_FAILED(L"OpenPropertyStore failed", hr, return false);
+		NOTIFY_IF_FAILED(L"OpenPropertyStore failed", hr, Severity::Warning, return false);
 
 		PROPVARIANT deviceDescription;
 		PropVariantInit(&deviceDescription);
 
 		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
-		NOTIFY_IF_FAILED(L"GetValue failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetValue failed", hr, Severity::Warning, return false);
 
 		for (const c16* genericName : genericNames)
 		{
 			if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
 			{
 				hr = PropVariantClear(&deviceDescription);
-				NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, return false);
+				NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, Severity::Warning, return false);
 
 				PropVariantInit(&deviceDescription);
 
 				hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
-				NOTIFY_IF_FAILED(L"GetValue failed", hr, return false);
+				NOTIFY_IF_FAILED(L"GetValue failed", hr, Severity::Warning, return false);
 
 				break;
 			}
 		}
 
-		Notify(notification, deviceDescription.pwszVal);
+		Notify(state, deviceDescription.pwszVal);
 
 		hr = PropVariantClear(&deviceDescription);
-		NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, return false);
+		NOTIFY_IF_FAILED(L"PropVariantClear failed", hr, Severity::Warning, return false);
 	}
 
 
@@ -157,61 +140,54 @@ CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 	{
 		CComPtr<IPolicyConfig> policyConfig;
 		hr = CoCreateInstance(CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policyConfig));
-		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
+		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, Severity::Warning, return false);
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eConsole);
-		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, Severity::Warning, return false);
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
-		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, Severity::Warning, return false);
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eCommunications);
-		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, return false);
+		NOTIFY_IF_FAILED(L"SetDefaultEndpoint failed", hr, Severity::Warning, return false);
 
 
 		if (audioType == AudioType::Playback)
 		{
 			b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
-			if (!success)
-			{
-				Notify(notification, L"PlaySound failed", Severity::Warning);
-				return false;
-			}
+			NOTIFY_IF(!success, L"PlaySound failed", Severity::Warning, return false);
 		}
 	}
 
 	return true;
-
-	#undef NOTIFY_IF
-	#undef NOTIFY_IF_FAILED
 }
 
 b32
-CycleAudioPlaybackDevice(NotificationWindow* notification)
+CycleAudioPlaybackDevice(NotificationState* state)
 {
 	// NOTE: CoInitialize is assumed to have been called.
-	return CycleAudioDevice(notification, AudioType::Playback);
+	return CycleAudioDevice(state, AudioType::Playback);
 }
 
 b32
-OpenAudioPlaybackDevicesWindow(NotificationWindow* notification)
+OpenAudioPlaybackDevicesWindow(NotificationState* state)
 {
 	c8 command[] = "control.exe /name Microsoft.Sound /page Playback";
-	return RunCommand(notification, command);
+	return RunCommand(state, command);
 }
 
 b32
-CycleAudioRecordingDevice(NotificationWindow* notification)
+CycleAudioRecordingDevice(NotificationState* state)
 {
 	// NOTE: CoInitialize is assumed to have been called.
-	return CycleAudioDevice(notification, AudioType::Recording);
+	return CycleAudioDevice(state, AudioType::Recording);
 }
 
 b32
-OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
+OpenAudioRecordingDevicesWindow(NotificationState* state)
 {
 	c8 command[] = "control.exe /name Microsoft.Sound /page Recording";
-	return RunCommand(notification, command);
+	return RunCommand(state, command);
 }
 
 struct ProcessInfo
@@ -222,35 +198,19 @@ struct ProcessInfo
 };
 
 void
-GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& process)
+GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 {
 	// NOTE: CoInitialize is assumed to have been called.
 
-
-	#define NOTIFY_IF(expression, string, reaction) \
-		if (expression) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		} \
-
-	#define NOTIFY_IF_FAILED(string, hr, reaction) \
-		if (FAILED(hr)) \
-		{ \
-			NotifyWindowsError(notification, string, Severity::Warning, hr); \
-			reaction; \
-		}
-
-
 	// Open process returns 0, not INVALID_HANDLE_VALUE
 	HANDLE processHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process.id);
-	NOTIFY_IF(!processHandle, L"OpenProcess failed", return);
+	NOTIFY_IF(!processHandle, L"OpenProcess failed", Severity::Warning, return);
 	defer { CloseHandle(processHandle); };
 
 	c16 processPath[MAX_PATH];
 	u32 pathLength = ArrayCount(processPath);
 	b32 result = QueryFullProcessImageNameW(processHandle, 0, processPath, (DWORD*) &pathLength);
-	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", return);
+	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", Severity::Warning, return);
 
 
 	// Try the FileDescription property of the version info
@@ -295,7 +255,7 @@ GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& p
 		u32 translationSize;
 		Translation* translations;
 		b32 result = VerQueryValueW(versionInfo, L"\\VarFileInfo\\Translation", (void**) &translations, &translationSize);
-		NOTIFY_IF(!result, L"GetFileVersionInfoSizeW failed", break);
+		NOTIFY_IF(!result, L"GetFileVersionInfoSizeW failed", Severity::Warning, break);
 
 		i32 translationCount = translationSize / sizeof(Translation);
 		for (i32 i = 0; i < translationCount; i++)
@@ -326,11 +286,11 @@ GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& p
 	{
 		CComPtr<IShellItem2> shellItem;
 		HRESULT hr = SHCreateItemFromParsingName(processPath, nullptr, IID_PPV_ARGS(&shellItem));
-		NOTIFY_IF_FAILED(L"SHCreateItemFromParsingName failed", hr, return);
+		NOTIFY_IF_FAILED(L"SHCreateItemFromParsingName failed", hr, Severity::Warning, return);
 
 		CComHeapPtr<c16> value;
 		hr = shellItem->GetString(PKEY_ItemNameDisplayWithoutExtension, &value);
-		NOTIFY_IF_FAILED(L"IShellItem2::GetString failed", hr, return);
+		NOTIFY_IF_FAILED(L"IShellItem2::GetString failed", hr, Severity::Warning, return);
 
 		wcscpy_s(process.name, ArrayCount(process.name), value);
 		return;
@@ -360,9 +320,6 @@ GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& p
 		swprintf(process.name, ArrayCount(process.name), L"%i", process.id);
 		return;
 	}
-
-	#undef NOTIFY_IF
-	#undef NOTIFY_IF_FAILED
 }
 
 void
@@ -434,39 +391,15 @@ GetProcessRoot(HANDLE snapshot, ProcessInfo& process)
 }
 
 b32
-ToggleMuteForCurrentApplication(NotificationWindow* notification)
+ToggleMuteForCurrentApplication(NotificationState* state)
 {
 	// NOTE: CoInitialize is assumed to have been called.
-	HRESULT hr;
-
-
-	#define NOTIFY_IF(expression, string, reaction) \
-		if (expression) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		} \
-
-	#define NOTIFY_IF_FAILED(string, hr, reaction) \
-		if (FAILED(hr)) \
-		{ \
-			NotifyWindowsError(notification, string, Severity::Warning, hr); \
-			reaction; \
-		}
-
-	#define NOTIFY_IF_INVALID_HANDLE(string, handle, reaction) \
-		if (handle == INVALID_HANDLE_VALUE) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		}
-
 
 	HANDLE snapshot = INVALID_HANDLE_VALUE;
 	defer { CloseHandle(snapshot); };
 	{
 		snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-		NOTIFY_IF_INVALID_HANDLE(L"CreateToolhelp32Snapshot failed", snapshot, return false);
+		NOTIFY_IF_INVALID_HANDLE(L"CreateToolhelp32Snapshot failed", snapshot, Severity::Warning, return false);
 	}
 
 
@@ -477,14 +410,14 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 		GUITHREADINFO threadInfo = {};
 		threadInfo.cbSize = sizeof(GUITHREADINFO);
 		b32 result = GetGUIThreadInfo(0, &threadInfo);
-		NOTIFY_IF(!result, L"GetGUIThreadInfo failed", return false);
+		NOTIFY_IF(!result, L"GetGUIThreadInfo failed", Severity::Warning, return false);
 
 		HWND hwnd = threadInfo.hwndFocus ? threadInfo.hwndFocus : threadInfo.hwndActive;
-		NOTIFY_IF(!hwnd, L"Failed to find focused window", return false);
-		hr = GetWindowThreadProcessId(hwnd, (DWORD*) &focusedProcess.id);
-		NOTIFY_IF_FAILED(L"GetWindowThreadProcessId failed", hr, return false);
+		NOTIFY_IF(!hwnd, L"Failed to find focused window", Severity::Warning, return false);
+		HRESULT hr = GetWindowThreadProcessId(hwnd, (DWORD*) &focusedProcess.id);
+		NOTIFY_IF_FAILED(L"GetWindowThreadProcessId failed", hr, Severity::Warning, return false);
 
-		GetProcessName(notification, snapshot, focusedProcess);
+		GetProcessName(state, snapshot, focusedProcess);
 		GetProcessRoot(snapshot, focusedProcess);
 	}
 
@@ -492,24 +425,24 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 	// Mute all audio streams associated with the process
 	{
 		CComPtr<IMMDeviceEnumerator> deviceEnumerator;
-		hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
-		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
+		HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, Severity::Warning, return false);
 
 		CComPtr<IMMDevice> currentDevice;
 		hr = deviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eConsole, &currentDevice);
-		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, Severity::Warning, return false);
 
 		CComPtr<IAudioSessionManager2> sessionManager;
 		hr = currentDevice->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void**) &sessionManager);
-		NOTIFY_IF_FAILED(L"IMMDevice::Activate failed", hr, return false);
+		NOTIFY_IF_FAILED(L"IMMDevice::Activate failed", hr, Severity::Warning, return false);
 
 		CComPtr<IAudioSessionEnumerator> sessionList;
 		hr = sessionManager->GetSessionEnumerator(&sessionList);
-		NOTIFY_IF_FAILED(L"GetSessionEnumerator failed", hr, return false);
+		NOTIFY_IF_FAILED(L"GetSessionEnumerator failed", hr, Severity::Warning, return false);
 
 		int sessionCount;
 		hr = sessionList->GetCount(&sessionCount);
-		NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetCount failed", hr, return false);
+		NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetCount failed", hr, Severity::Warning, return false);
 
 		b8 foundStream = false;
 		b32 mute = true;
@@ -518,15 +451,15 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 		{
 			CComPtr<IAudioSessionControl> sessionControl;
 			hr = sessionList->GetSession(i, &sessionControl);
-			NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetSession failed", hr, return false);
+			NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetSession failed", hr, Severity::Warning, return false);
 
 			CComPtr<IAudioSessionControl2> sessionControl2;
 			hr = sessionControl->QueryInterface(IID_PPV_ARGS(&sessionControl2));
-			NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
+			NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, Severity::Warning, return false);
 
 			ProcessInfo process = {};
 			hr = sessionControl2->GetProcessId((DWORD*) &process.id);
-			NOTIFY_IF_FAILED(L"IAudioSessionControl2::GetProcessId failed", hr, return false);
+			NOTIFY_IF_FAILED(L"IAudioSessionControl2::GetProcessId failed", hr, Severity::Warning, return false);
 
 			// TODO: Can this be done the other way around? Ask if stream process has a focused window
 
@@ -538,19 +471,19 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 			{
 				CComPtr<ISimpleAudioVolume> audioVolume;
 				hr = sessionControl->QueryInterface(IID_PPV_ARGS(&audioVolume));
-				NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
+				NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, Severity::Warning, return false);
 
 				if (!foundStream)
 				{
 					hr = audioVolume->GetMute(&mute);
-					NOTIFY_IF_FAILED(L"GetMute failed", hr, return false);
+					NOTIFY_IF_FAILED(L"GetMute failed", hr, Severity::Warning, return false);
 
 					foundStream = true;
 					mute = !mute;
 				}
 
 				hr = audioVolume->SetMute(mute, nullptr);
-				NOTIFY_IF_FAILED(L"SetMute failed", hr, return false);
+				NOTIFY_IF_FAILED(L"SetMute failed", hr, Severity::Warning, return false);
 			}
 		}
 
@@ -560,18 +493,14 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 
 		c16 message[256];
 		swprintf(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcess.name);
-		Notify(notification, message);
+		Notify(state, message);
 	}
 
 	return true;
-
-	#undef NOTIFY_IF
-	#undef NOTIFY_IF_FAILED
-	#undef NOTIFY_IF_INVALID_HANDLE
 }
 
 b32
-OpenVolumeMixerWindow(NotificationWindow* notification)
+OpenVolumeMixerWindow(NotificationState* state)
 {
 	// Command line options (Windows 10 22H2)
 	//
@@ -594,5 +523,5 @@ OpenVolumeMixerWindow(NotificationWindow* notification)
 
 	c8 command[256];
 	snprintf(command, ArrayCount(command), "SndVol.exe -m %i", coords);
-	return RunCommand(notification, command);
+	return RunCommand(state, command);
 }
