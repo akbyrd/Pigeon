@@ -93,7 +93,7 @@ Initialize(
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		NOTIFY_WINDOWS_IF(classAtom == INVALID_ATOM, L"RegisterClassW failed", Severity::Error, return false);
+		NOTIFY_WINDOWS_IF(classAtom == INVALID_ATOM, Severity::Error, return false, L"RegisterClassW failed");
 
 		HWND hwnd = CreateWindowExW(
 			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
@@ -109,7 +109,7 @@ Initialize(
 			hInstance,
 			state
 		);
-		NOTIFY_IF_INVALID_HANDLE(L"CreateWindowExW failed", hwnd, Severity::Error, return false);
+		NOTIFY_IF_INVALID_HANDLE(hwnd, Severity::Error, return false, L"CreateWindowExW failed");
 
 		state->hwnd = hwnd;
 		phase = InitPhase::WindowCreated;
@@ -129,7 +129,7 @@ Initialize(
 		FILETIME win32_startFileTime = {};
 		FILETIME unusued;
 		b32 success = GetProcessTimes(hProcess, &win32_startFileTime, &unusued, &unusued, &unusued);
-		NOTIFY_WINDOWS_IF(!success, L"GetProcessTimes failed", Severity::Error, return false);
+		NOTIFY_WINDOWS_IF(!success, Severity::Error, return false, L"GetProcessTimes failed");
 
 		ULARGE_INTEGER win32_startTime = {};
 		win32_startTime.LowPart  = win32_startFileTime.dwLowDateTime;
@@ -140,17 +140,17 @@ Initialize(
 		processID = GetProcessId(hProcess);
 
 		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
-		NOTIFY_WINDOWS_IF(!WM_NEWINSTANCE, L"RegisterWindowMessage failed", Severity::Error, return false);
+		NOTIFY_WINDOWS_IF(!WM_NEWINSTANCE, Severity::Error, return false, L"RegisterWindowMessage failed");
 
 		// TODO: Namespace?
 		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
-		NOTIFY_WINDOWS_IF(!singleInstanceMutex, L"CreateMutex failed", Severity::Error, return false);
+		NOTIFY_WINDOWS_IF(!singleInstanceMutex, Severity::Error, return false, L"CreateMutex failed");
 
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			// TODO: Better to enumerate processes instead of broadcasting
 			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, processID);
-			NOTIFY_WINDOWS_IF(!success, L"PostMessage failed", Severity::Error, return false);
+			NOTIFY_WINDOWS_IF(!success, Severity::Error, return false, L"PostMessage failed");
 
 			// TODO: Not handling messages while waiting
 			u32 uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
@@ -158,11 +158,11 @@ Initialize(
 			{
 				singleInstanceMutex = nullptr;
 
-				NotifyWindowsError(state, L"WaitForSingleObject WAIT_FAILED", Severity::Error);
+				NotifyWindowsError(state, Severity::Error, L"WaitForSingleObject WAIT_FAILED");
 				return false;
 			}
 
-			NOTIFY_WINDOWS_IF(uResult == WAIT_ABANDONED, L"WaitForSingleObject WAIT_ABANDON", Severity::Warning, NOTHING);
+			NOTIFY_WINDOWS_IF(uResult == WAIT_ABANDONED, Severity::Warning, NOTHING, L"WaitForSingleObject WAIT_ABANDON");
 		}
 
 		phase = InitPhase::SingleInstanceEnforced;
@@ -176,7 +176,7 @@ Initialize(
 			b32 success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
 			if (!success)
 			{
-				NotifyWindowsError(state, L"RegisterHotKey failed", Severity::Error);
+				NotifyWindowsError(state, Severity::Error, L"RegisterHotKey failed");
 
 				b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8, HANDLE&);
 				success = UnregisterHotkeys(state, hotkeys, hotkeyCount, singleInstanceMutex);
@@ -195,7 +195,7 @@ Initialize(
 	// Initialize systems
 	{
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-		NOTIFY_IF_FAILED(L"CoInitializeEx failed", hr, Severity::Error, return false);
+		NOTIFY_IF_FAILED(hr, Severity::Error, return false, L"CoInitializeEx failed");
 
 		phase = InitPhase::SystemsInitialized;
 	}
@@ -205,7 +205,7 @@ Initialize(
 	{
 		c16* logFolderPath = nullptr;
 		HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &logFolderPath);
-		NOTIFY_IF_FAILED(L"SHGetFolderPath failed", hr, Severity::Error, return false);
+		NOTIFY_IF_FAILED(hr, Severity::Error, return false, L"SHGetFolderPath failed");
 
 		swprintf(state->logFilePath, ArrayCount(state->logFilePath), L"%s\\Pigeon", logFolderPath);
 		b32 result = CreateDirectoryW(state->logFilePath, nullptr);
@@ -214,7 +214,7 @@ Initialize(
 			u32 error = GetLastError();
 			if (error != ERROR_ALREADY_EXISTS)
 			{
-				NotifyWindowsError(state, L"Failed to create log file path", Severity::Warning, error);
+				NotifyWindowsError(state, error, Severity::Warning, L"Failed to create log file path");
 				return false;
 			}
 		}
@@ -236,7 +236,7 @@ Initialize(
 		if (logFile == INVALID_HANDLE_VALUE)
 		{
 			state->logFilePath[0] = '\0';
-			NotifyWindowsError(state, L"CreateFile failed", Severity::Warning);
+			NotifyWindowsError(state, Severity::Warning, L"CreateFile failed");
 			return false;
 		}
 
@@ -250,7 +250,7 @@ Initialize(
 b32
 OpenLogFile(NotificationState* state)
 {
-	NOTIFY_IF(!state->logFilePath[0], L"No log file", Severity::Warning, return false);
+	NOTIFY_IF(!state->logFilePath[0], Severity::Warning, return false, L"No log file");
 
 	// The return value is treated as an int. It's not a real HINSTANCE
 	HINSTANCE result = ShellExecuteW(
@@ -260,7 +260,7 @@ OpenLogFile(NotificationState* state)
 		nullptr,
 		nullptr,
 		SW_SHOW);
-	NOTIFY_IF((i64) result < 32, L"ShellExecuteW failed", Severity::Warning, return false);
+	NOTIFY_IF((i64) result < 32, Severity::Warning, return false, L"ShellExecuteW failed");
 
 	return true;
 }
@@ -277,7 +277,7 @@ UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HAN
 			if (!success)
 			{
 				unregisterFailed = true;
-				NotifyWindowsError(state, L"UnregisterHotKey failed", Severity::Warning);
+				NotifyWindowsError(state, Severity::Warning, L"UnregisterHotKey failed");
 				continue;
 			}
 
@@ -288,7 +288,7 @@ UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HAN
 
 
 	b32 success = ReleaseMutex(singleInstanceMutex);
-	NOTIFY_WINDOWS_IF(!success, L"ReleaseMutex failed", Severity::Warning, return false);
+	NOTIFY_WINDOWS_IF(!success, Severity::Warning, return false, L"ReleaseMutex failed");
 
 	singleInstanceMutex = nullptr;
 
@@ -300,7 +300,7 @@ RunCommand(NotificationState* state, c8* command)
 {
 	u32 uResult = WinExec(command, SW_NORMAL);
 	// TODO: Can we get an error message from the result value?
-	NOTIFY_IF_F(uResult < 32, L"WinExec failed: %u", Severity::Warning, return false, uResult);
+	NOTIFY_IF(uResult < 32, Severity::Warning, return false, L"WinExec failed: %u", uResult);
 
 	return true;
 }
@@ -352,10 +352,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 		#if false
 		#define LAMBDA(x) [](NotificationState* state) -> b32 { x; return true; }
-		{           0, VK_F9 , LAMBDA(Notify(state, L"DEBUG Message", Severity::Info))    },
-		{           0, VK_F10, LAMBDA(Notify(state, L"DEBUG Warning", Severity::Warning)) },
-		{           0, VK_F11, LAMBDA(Notify(state, L"DEBUG Error"  , Severity::Error))   },
-		{           0, VK_F12, &RestartApplication                                               },
+		{           0, VK_F9 , LAMBDA(Notify(state, Severity::Info),    L"DEBUG Message") },
+		{           0, VK_F10, LAMBDA(Notify(state, Severity::Warning), L"DEBUG Warning") },
+		{           0, VK_F11, LAMBDA(Notify(state, Severity::Error),   L"DEBUG Error")   },
+		{           0, VK_F12, &RestartApplication                                        },
 		#undef LAMBDA
 		#endif
 	};
@@ -382,7 +382,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-	NOTIFY_WINDOWS_IF(!success, L"SetPriorityClass failed", Severity::Warning, NOTHING);
+	NOTIFY_WINDOWS_IF(!success, Severity::Warning, NOTHING, L"SetPriorityClass failed");
 
 
 	// Message loop
@@ -403,7 +403,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 			// TODO: This causes an interesting queue overflow scenario. Probably related to the bug in
 			// the todo list
-			//NotifyFormat(state, L"Ima overflowin' ur bufferz", Severity::Warning);
+			//NotifyFormat(state, Severity::Warning, L"Ima overflowin' ur bufferz");
 
 			if (msg.message == WM_NEWINSTANCE)
 			{
@@ -421,7 +421,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					state->windowPosition.y += state->windowSize.cy + 10;
 					UpdateWindowPositionAndSize(state);
 
-					Notify(state, L"There can be only one!", Severity::Error);
+					Notify(state, Severity::Error, L"There can be only one!");
 				}
 			}
 			else
@@ -477,12 +477,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 							c16 log[32];
 							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%1X), w:0x%1llX\n", msg.message, msg.wParam);
-							NOTIFY_IF(logLen < 0, L"Log format failed", Severity::Warning, break);
+							NOTIFY_IF(logLen < 0, Severity::Warning, break, L"Log format failed");
 
 							// NOTE: This still succeeds if the file is deleted. Strange.
 							i32 logBytes = logLen * sizeof(log[0]);
 							b32 result = WriteFile(logFile, log, logBytes, nullptr, nullptr);
-							NOTIFY_IF(!result, L"Log write failed", Severity::Warning, NOTHING);
+							NOTIFY_IF(!result, Severity::Warning, NOTHING, L"Log write failed");
 						}
 						break;
 					}
