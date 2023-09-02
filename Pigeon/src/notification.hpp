@@ -24,40 +24,41 @@ struct Notification
 
 struct NotificationWindow
 {
-	Notification queue[4]         = {};
-	u8           queueStart       = 0;
-	u8           queueCount       = 0;
+	Notification queue[4]              = {};
+	u8           queueStart            = 0;
+	u8           queueCount            = 0;
 
-	b32          isDirty          = false;
-	AnimPhase    animPhase        = AnimPhase::Hidden;
-	f64          animStartTick    = 0;
-	f64          animShowTicks    = 0;
-	f64          animIdleTicks    = 0;
-	f64          animHideTicks    = 0;
-	u16          animUpdateMS     = 0;
-	f64          tickFrequency    = 0;
+	b32          isDirty               = false;
+	AnimPhase    animPhase             = AnimPhase::Hidden;
+	f64          animStartTick         = 0;
+	f64          animShowTicks         = 0;
+	f64          animIdleTicks         = 0;
+	f64          animHideTicks         = 0;
+	u16          animUpdateMS          = 0;
+	f64          tickFrequency         = 0;
 
-	u16          windowMinWidth   = 0;
-	u16          windowMaxWidth   = 0;
-	SIZE         windowSize       = {};
-	POINT        windowPosition   = {};
+	u16          windowMinWidth        = 0;
+	u16          windowMaxWidth        = 0;
+	SIZE         windowSize            = {};
+	POINT        windowPosition        = {};
 
-	COLORREF     backgroundColor  = {};
-	COLORREF     textColorNormal  = {};
-	COLORREF     textColorError   = {};
-	COLORREF     textColorWarning = {};
-	u8           textPadding      = 0;
+	COLORREF     backgroundColor       = {};
+	COLORREF     textColorNormal       = {};
+	COLORREF     textColorError        = {};
+	COLORREF     textColorWarning      = {};
+	u8           textPadding           = 0;
 
-	b32          isInitialized    = false;
-	HWND         hwnd             = nullptr;
-	HDC          bitmapDC         = nullptr;
-	HFONT        font             = nullptr;
-	HBITMAP      bitmap           = nullptr;
-	u32*         pixels           = nullptr;
-	u64          timerID          = 0;
+	b32          isInitialized         = false;
+	HWND         hwnd                  = nullptr;
+	HDC          bitmapDC              = nullptr;
+	HFONT        font                  = nullptr;
+	HBITMAP      bitmap                = nullptr;
+	u32*         pixels                = nullptr;
+	u64          timerID               = 0;
+	c16          logFilePath[MAX_PATH] = {};
 
-	HFONT        previousFont     = nullptr;
-	HBITMAP      previousBitmap   = nullptr;
+	HFONT        previousFont          = nullptr;
+	HBITMAP      previousBitmap        = nullptr;
 };
 
 b32 ProcessNotificationQueue(NotificationWindow* state);
@@ -403,18 +404,18 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	auto state = (NotificationWindow*) GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 
 	#define NOTIFY_IF(expression, string, reaction) \
-	if (expression)                                 \
-	{                                               \
-		Notify(state, string, Severity::Error);     \
-		reaction;                                   \
-	}                                               \
+	if (expression) \
+	{ \
+		Notify(state, string, Severity::Error); \
+		reaction; \
+	} \
 
 	#define NOTIFY_WINDOWS_IF(expression, string, reaction) \
-	if (expression)                                         \
-	{                                                       \
-		NotifyWindowsError(state, string);                  \
-		reaction;                                           \
-	}                                                       \
+	if (expression) \
+	{ \
+		NotifyWindowsError(state, string); \
+		reaction; \
+	} \
 
 	#define NOTHING
 

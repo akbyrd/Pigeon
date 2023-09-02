@@ -2,7 +2,6 @@
 #include <mmdeviceapi.h>
 #include <playsoundapi.h>
 #include <propkey.h>
-#include <Shobjidl.h>
 #include <tlhelp32.h>
 #include <Functiondiscoverykeys_devpkey.h>
 
@@ -217,9 +216,9 @@ OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
 
 struct ProcessInfo
 {
-	DWORD id;
-	DWORD rootId;
-	c16   name[256];
+	u32 id;
+	u32 rootId;
+	c16 name[256];
 };
 
 void
@@ -249,15 +248,15 @@ GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& p
 	defer { CloseHandle(processHandle); };
 
 	c16 processPath[MAX_PATH];
-	DWORD pathLength = ArrayCount(processPath);
-	b32 result = QueryFullProcessImageNameW(processHandle, 0, processPath, &pathLength);
+	u32 pathLength = ArrayCount(processPath);
+	b32 result = QueryFullProcessImageNameW(processHandle, 0, processPath, (DWORD*) &pathLength);
 	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", return);
 
 
 	// Try the FileDescription property of the version info
 	for (;;)
 	{
-		DWORD versionInfoSize = GetFileVersionInfoSizeW(processPath, nullptr);
+		u32 versionInfoSize = GetFileVersionInfoSizeW(processPath, nullptr);
 		if (!versionInfoSize) break;
 
 		u8* versionInfo = new u8[versionInfoSize];
@@ -304,7 +303,7 @@ GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& p
 			Translation& translation = translations[i];
 
 			c16 language[9];
-			wnsprintfW(language, ArrayCount(language), L"%04x%04x", translation.language, translation.codepage);
+			swprintf(language, ArrayCount(language), L"%04x%04x", translation.language, translation.codepage);
 			wmemcpy(&subBlock[16], language, ArrayCount(language) - 1);
 
 			// Some edge cases to be aware of:
@@ -372,7 +371,7 @@ GetProcessRoot(HANDLE snapshot, ProcessInfo& process)
 	PROCESSENTRY32W processEntry;
 	processEntry.dwSize = sizeof(PROCESSENTRY32W);
 
-	DWORD maybeParentProcessId = 0;
+	u32 maybeParentProcessId = 0;
 	process.rootId = process.id;
 
 	for (b8 Continue = Process32FirstW(snapshot, &processEntry);
@@ -482,7 +481,7 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 
 		HWND hwnd = threadInfo.hwndFocus ? threadInfo.hwndFocus : threadInfo.hwndActive;
 		NOTIFY_IF(!hwnd, L"Failed to find focused window", return false);
-		hr = GetWindowThreadProcessId(hwnd, &focusedProcess.id);
+		hr = GetWindowThreadProcessId(hwnd, (DWORD*) &focusedProcess.id);
 		NOTIFY_IF_FAILED(L"GetWindowThreadProcessId failed", hr, return false);
 
 		GetProcessName(notification, snapshot, focusedProcess);
@@ -526,7 +525,7 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 			NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
 
 			ProcessInfo process = {};
-			hr = sessionControl2->GetProcessId(&process.id);
+			hr = sessionControl2->GetProcessId((DWORD*) &process.id);
 			NOTIFY_IF_FAILED(L"IAudioSessionControl2::GetProcessId failed", hr, return false);
 
 			// TODO: Can this be done the other way around? Ask if stream process has a focused window
@@ -560,7 +559,7 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 			: L"No Audio";
 
 		c16 message[256];
-		wnsprintfW(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcess.name);
+		swprintf(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcess.name);
 		Notify(notification, message);
 	}
 

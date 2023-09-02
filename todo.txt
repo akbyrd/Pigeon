@@ -1,14 +1,20 @@
+Error macros in win32_main.cpp
 Improve device name handling
-Log file doesn't work in startup (also auto-opens)
-Click to open log
-Hotkey for log
 Better multi-monitor handling
 	Show on all desktops?
 	Show on current desktop?
 Sometimes prevents shutdown
 Handle messages:
 	WM_SYSCOLORCHAGED (created a vsix project)
-	Use built-in function to get window message names
+	UNKNOWN (0x100), w:0x11
+	UNKNOWN (0x100), w:0x5B
+	UNKNOWN (0x101), w:0x11
+	UNKNOWN (0x101), w:0x5B
+	UNKNOWN (0x101), w:0x77
+	UNKNOWN (0x60), w:0x1
+	UNKNOWN (0x60), w:0x0
+	WM_SYSKEYDOWN, w: 0x58
+	WM_SYSKEYDOWN, w: 0x78
 Bluetoother device connection/disconnection
 Change the queue behavior
 	Multiple windows?
@@ -16,7 +22,3 @@ Change the queue behavior
 	Different channels use different windows
 	Same channel reuses same window
 	Colored bar for queued messages?
-
-UNKNOWN (0x60), w: 0x1
-WM_SYSKEYDOWN, w: 0x58
-WM_SYSKEYDOWN, w: 0x78

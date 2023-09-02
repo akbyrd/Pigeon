@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 // TODO: #include <minwindef.h>?
 #include <Windows.h>
+#include <shellapi.h>
+#include <Shlobj.h>
 #include <Tpcshrd.h>
 // TODO: Switch to WRL ComPtr
 #include <atlbase.h> // CComPtr
@@ -227,28 +229,78 @@ Initialize(
 	}
 
 
-	// Open log file
+	// Create log file
 	{
+		c16* logFolderPath = nullptr;
+		HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &logFolderPath);
+		if (FAILED(hr))
+		{
+			NotifyWindowsError(&notification, L"SHGetFolderPath failed");
+			return false;
+		}
+
+		swprintf(notification.logFilePath, ArrayCount(notification.logFilePath), L"%s\\Pigeon", logFolderPath);
+		b32 result = CreateDirectoryW(notification.logFilePath, nullptr);
+		if (!result)
+		{
+			u32 error = GetLastError();
+			if (error != ERROR_ALREADY_EXISTS)
+			{
+				NotifyWindowsError(&notification, L"Failed to create log file path", Severity::Warning, error);
+				return false;
+			}
+		}
+
+		wcscat_s(notification.logFilePath, ArrayCount(notification.logFilePath), L"\\pigeon.log");
+
 		logFile = CreateFileW(
-			L"pigeon.log",
+			notification.logFilePath,
 			GENERIC_WRITE,
 			// TODO: Test write and delete while file is open
 			FILE_SHARE_READ | FILE_SHARE_DELETE,
 			nullptr,
 			// TODO: Change this back to CREATE_ALWAYS at some point
 			OPEN_ALWAYS,
+			//CREATE_ALWAYS,
 			FILE_ATTRIBUTE_NORMAL,
 			nullptr
 		);
-		if (!logFile)
+		if (logFile == INVALID_HANDLE_VALUE)
 		{
-			NotifyWindowsError(&notification, L"CreateFile failed");
+			notification.logFilePath[0] = '\0';
+			NotifyWindowsError(&notification, L"CreateFile failed", Severity::Warning);
 			return false;
 		}
 
 		phase = InitPhase::LogFileCreated;
 	}
 
+
+	return true;
+}
+
+b32
+OpenLogFile(NotificationWindow* notification)
+{
+	#define NOTIFY_IF(expression, string, reaction) \
+		if (expression) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		} \
+
+
+	NOTIFY_IF(!notification->logFilePath[0], L"No log file", return false);
+
+	// The return value is treated as an int. It's not a real HINSTANCE
+	HINSTANCE result = ShellExecuteW(
+		nullptr,
+		L"open",
+		notification->logFilePath,
+		nullptr,
+		nullptr,
+		SW_SHOW);
+	NOTIFY_IF((i64) result < 32, L"ShellExecuteW failed", return false);
 
 	return true;
 }
@@ -301,7 +353,6 @@ RunCommand(NotificationWindow* notification, c8* command)
 	return true;
 }
 
-
 i32 CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
@@ -334,6 +385,8 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	Hotkey hotkeys[] = {
+		//{           0, VK_F8 , nullptr                           },
+		{ MOD_CONTROL, VK_F8 , &OpenLogFile                      },
 		{           0, VK_F9 , &CycleAudioPlaybackDevice         },
 		{ MOD_CONTROL, VK_F9 , &OpenAudioPlaybackDevicesWindow   },
 		{           0, VK_F10, &CycleAudioRecordingDevice        },
@@ -461,15 +514,15 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 							{
 								// TODO: Check error
 								c16 buffer[32];
-								swprintf(buffer, ArrayCount(buffer), L"UNKNOWN (0x%X)", msg.message);
+								swprintf(buffer, ArrayCount(buffer), L"UNKNOWN (0x%1X)", msg.message);
 
 								messageName = buffer;
 							}
 
-							NotifyFormat(&notification, L"Unexpected message: %s, w:0x%llX", Severity::Warning, messageName, msg.wParam);
+							NotifyFormat(&notification, L"Unexpected message: %s, w:0x%1llX", Severity::Warning, messageName, msg.wParam);
 
 							c16 log[32];
-							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%X), w:0x%llX\n", msg.message, msg.wParam);
+							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%1X), w:0x%1llX\n", msg.message, msg.wParam);
 							if (logLen < 0)
 							{
 								NotifyFormat(&notification, L"Log format failed", Severity::Warning);
