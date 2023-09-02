@@ -65,6 +65,8 @@ struct Hotkey
 	b32 registered;
 };
 
+b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8, HANDLE&);
+
 b32
 Initialize(
 	InitPhase& phase,
@@ -156,13 +158,15 @@ Initialize(
 			u32 uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
 			if (uResult == WAIT_FAILED)
 			{
-				singleInstanceMutex = nullptr;
-
 				NotifyWindowsError(state, Severity::Error, L"WaitForSingleObject WAIT_FAILED");
+
+				singleInstanceMutex = nullptr;
 				return false;
 			}
-
-			WINDOWS_WARN_IF(uResult == WAIT_ABANDONED, NOTHING, L"WaitForSingleObject WAIT_ABANDON");
+			if (uResult == WAIT_ABANDONED)
+			{
+				NotifyWindowsError(state, Severity::Warning, L"WaitForSingleObject WAIT_ABANDON");
+			}
 		}
 
 		phase = InitPhase::SingleInstanceEnforced;
@@ -178,10 +182,9 @@ Initialize(
 			{
 				NotifyWindowsError(state, Severity::Error, L"RegisterHotKey failed");
 
-				b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8, HANDLE&);
 				success = UnregisterHotkeys(state, hotkeys, hotkeyCount, singleInstanceMutex);
-				if (!success) phase = InitPhase::HotkeysRegistered;
-
+				if (!success)
+					phase = InitPhase::HotkeysRegistered;
 				return false;
 			}
 
@@ -209,15 +212,8 @@ Initialize(
 
 		swprintf(state->logFilePath, ArrayCount(state->logFilePath), L"%s\\Pigeon", logFolderPath);
 		b32 result = CreateDirectoryW(state->logFilePath, nullptr);
-		if (!result)
-		{
-			u32 error = GetLastError();
-			if (error != ERROR_ALREADY_EXISTS)
-			{
-				NotifyWindowsError(state, error, Severity::Warning, L"Failed to create log file path");
-				return false;
-			}
-		}
+		result |= GetLastError() == ERROR_ALREADY_EXISTS;
+		WINDOWS_WARN_IF(!result, return false, L"Failed to create log file path");
 
 		wcscat_s(state->logFilePath, ArrayCount(state->logFilePath), L"\\pigeon.log");
 
@@ -235,8 +231,9 @@ Initialize(
 		);
 		if (logFile == INVALID_HANDLE_VALUE)
 		{
-			state->logFilePath[0] = '\0';
 			NotifyWindowsError(state, Severity::Warning, L"CreateFile failed");
+
+			state->logFilePath[0] = '\0';
 			return false;
 		}
 
@@ -276,8 +273,9 @@ UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HAN
 			b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
 			if (!success)
 			{
-				unregisterFailed = true;
 				NotifyWindowsError(state, Severity::Warning, L"UnregisterHotKey failed");
+
+				unregisterFailed = true;
 				continue;
 			}
 
