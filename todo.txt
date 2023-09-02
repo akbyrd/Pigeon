@@ -1,5 +1,4 @@
-Toggle mute for the current application
-Improve name handling
+Improve device name handling
 Log file doesn't work in startup (also auto-opens)
 Click to open log
 Hotkey for log
@@ -17,3 +16,7 @@ Change the queue behavior
 	Different channels use different windows
 	Same channel reuses same window
 	Colored bar for queued messages?
+
+UNKNOWN (0x60), w: 0x1
+WM_SYSKEYDOWN, w: 0x58
+WM_SYSKEYDOWN, w: 0x78

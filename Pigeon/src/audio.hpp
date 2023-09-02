@@ -215,43 +215,165 @@ OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
 	return RunCommand(notification, command);
 }
 
-#if false
 struct ProcessInfo
 {
 	DWORD id;
 	DWORD rootId;
-	c16   name[MAX_PATH];
-	c16   description[256];
+	c16   name[256];
 };
 
 void
-GetProcessName(ProcessInfo& process, HANDLE snapshot)
+GetProcessName(NotificationWindow* notification, HANDLE snapshot, ProcessInfo& process)
 {
-	PROCESSENTRY32W processEntry;
-	processEntry.dwSize = sizeof(PROCESSENTRY32W);
+	// NOTE: CoInitialize is assumed to have been called.
 
-	for (b8 Continue = Process32FirstW(snapshot, &processEntry);
-			Continue;
-			Continue = Process32NextW(snapshot, &processEntry))
+
+	#define NOTIFY_IF(expression, string, reaction) \
+		if (expression) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		} \
+
+	#define NOTIFY_IF_FAILED(string, hr, reaction) \
+		if (FAILED(hr)) \
+		{ \
+			NotifyWindowsError(notification, string, Severity::Warning, hr); \
+			reaction; \
+		}
+
+
+	// Open process returns 0, not INVALID_HANDLE_VALUE
+	HANDLE processHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process.id);
+	NOTIFY_IF(!processHandle, L"OpenProcess failed", return);
+	defer { CloseHandle(processHandle); };
+
+	c16 processPath[MAX_PATH];
+	DWORD pathLength = ArrayCount(processPath);
+	b32 result = QueryFullProcessImageNameW(processHandle, 0, processPath, &pathLength);
+	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", return);
+
+
+	// Try the FileDescription property of the version info
+	for (;;)
 	{
-		if (processEntry.th32ProcessID == process.id)
+		DWORD versionInfoSize = GetFileVersionInfoSizeW(processPath, nullptr);
+		if (!versionInfoSize) break;
+
+		u8* versionInfo = new u8[versionInfoSize];
+		defer { delete[] versionInfo; };
+		result = GetFileVersionInfoW(processPath, 0, versionInfoSize, versionInfo);
+		if (!result) break;
+
+		// It's hard to know which language and code page to use when querying the file
+		// description. Different programs use different combinations. Trying to match them
+		// against the user's preferred lanaguage would be hairy, so we try the neutral
+		// language, then fall back to first available combination.
+		//
+		// Languages
+		// * 0000 - Neutral - Firefox, Spotify
+		// * 0409 - en-US   - Discord, Steam, Edge, Epic
+		// * 0009 -         - NVidia
+
+		c16* tempDescription;
+		u32 descriptionLength;
+
+		// First try the neutral language
+		c16 subBlock[] = L"\\StringFileInfo\\000004b0\\FileDescription";
+		if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
 		{
-			wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
-			break;
+			wcscpy_s(process.name, ArrayCount(process.name), tempDescription);
+			return;
+		}
+
+		// Otherwise use the first available language
+		struct Translation
+		{
+			u16 language;
+			u16 codepage;
+		};
+
+		u32 translationSize;
+		Translation* translations;
+		b32 result = VerQueryValueW(versionInfo, L"\\VarFileInfo\\Translation", (void**) &translations, &translationSize);
+		NOTIFY_IF(!result, L"GetFileVersionInfoSizeW failed", break);
+
+		i32 translationCount = translationSize / sizeof(Translation);
+		for (i32 i = 0; i < translationCount; i++)
+		{
+			Translation& translation = translations[i];
+
+			c16 language[9];
+			wnsprintfW(language, ArrayCount(language), L"%04x%04x", translation.language, translation.codepage);
+			wmemcpy(&subBlock[16], language, ArrayCount(language) - 1);
+
+			// Some edge cases to be aware of:
+			// * Some programs have an FileDescription but it's empty (Fusion 360, for example)
+			// * I don't see an easy to to know if a codepage is UTF-16 compatible, so we take what we get and pray.
+
+			if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
+			{
+				if (descriptionLength != 0)
+				{
+					wcscpy_s(process.name, ArrayCount(process.name), tempDescription);
+					return;
+				}
+			}
 		}
 	}
+
+
+	// If we didn't find a file description (UWP applications) use the display name from the shell
+	{
+		CComPtr<IShellItem2> shellItem;
+		HRESULT hr = SHCreateItemFromParsingName(processPath, nullptr, IID_PPV_ARGS(&shellItem));
+		NOTIFY_IF_FAILED(L"SHCreateItemFromParsingName failed", hr, return);
+
+		CComHeapPtr<c16> value;
+		hr = shellItem->GetString(PKEY_ItemNameDisplayWithoutExtension, &value);
+		NOTIFY_IF_FAILED(L"IShellItem2::GetString failed", hr, return);
+
+		wcscpy_s(process.name, ArrayCount(process.name), value);
+		return;
+	}
+
+
+	// Fallback to the executable name
+	{
+		PROCESSENTRY32W processEntry;
+		processEntry.dwSize = sizeof(PROCESSENTRY32W);
+
+		for (b8 Continue = Process32FirstW(snapshot, &processEntry);
+				Continue;
+				Continue = Process32NextW(snapshot, &processEntry))
+		{
+			if (processEntry.th32ProcessID == process.id)
+			{
+				wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
+				return;
+			}
+		}
+	}
+
+
+	// Failure
+	{
+		swprintf(process.name, ArrayCount(process.name), L"%i", process.id);
+		return;
+	}
+
+	#undef NOTIFY_IF
+	#undef NOTIFY_IF_FAILED
 }
 
-// TODO: Remove
 void
-GetProcessNameAndRoot(ProcessInfo& process, HANDLE snapshot)
+GetProcessRoot(HANDLE snapshot, ProcessInfo& process)
 {
-	process.rootId = process.id;
-
 	PROCESSENTRY32W processEntry;
 	processEntry.dwSize = sizeof(PROCESSENTRY32W);
 
 	DWORD maybeParentProcessId = 0;
+	process.rootId = process.id;
 
 	for (b8 Continue = Process32FirstW(snapshot, &processEntry);
 			Continue;
@@ -260,7 +382,6 @@ GetProcessNameAndRoot(ProcessInfo& process, HANDLE snapshot)
 		if (processEntry.th32ProcessID == process.id)
 		{
 			maybeParentProcessId = processEntry.th32ParentProcessID;
-			wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
 			break;
 		}
 	}
@@ -312,151 +433,6 @@ GetProcessNameAndRoot(ProcessInfo& process, HANDLE snapshot)
 		maybeParentProcessId = 0;
 	}
 }
-#endif
-
-void
-GetProcessName(NotificationWindow* notification, HANDLE snapshot, DWORD processId, c16 (&name)[256])
-{
-	// NOTE: CoInitialize is assumed to have been called.
-
-
-	#define NOTIFY_IF(expression, string, reaction) \
-		if (expression) \
-		{ \
-			Notify(notification, string, Severity::Warning); \
-			reaction; \
-		} \
-
-	#define NOTIFY_IF_FAILED(string, hr, reaction) \
-		if (FAILED(hr)) \
-		{ \
-			NotifyWindowsError(notification, string, Severity::Warning, hr); \
-			reaction; \
-		}
-
-
-	// Open process returns 0, not INVALID_HANDLE_VALUE
-	HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
-	NOTIFY_IF(!process, L"OpenProcess failed", return);
-	defer { CloseHandle(process); };
-
-	c16 processPath[MAX_PATH];
-	DWORD pathLength = ArrayCount(processPath);
-	b32 result = QueryFullProcessImageNameW(process, 0, processPath, &pathLength);
-	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", return);
-
-
-	// Try the FileDescription property of the version info
-	for (;;)
-	{
-		DWORD versionInfoSize = GetFileVersionInfoSizeW(processPath, nullptr);
-		NOTIFY_IF(!versionInfoSize, L"GetFileVersionInfoSizeW failed", break);
-
-		u8* versionInfo = new u8[versionInfoSize];
-		defer { delete[] versionInfo; };
-		result = GetFileVersionInfoW(processPath, 0, versionInfoSize, versionInfo);
-		NOTIFY_IF(!result, L"GetFileVersionInfoW failed", break);
-
-		// It's hard to know which language and code page to use when querying the file
-		// description. Different programs use different combinations. Trying to match them
-		// against the user's preferred lanaguage would be hairy, so we try the neutral
-		// language, then fall back to first available combination.
-		//
-		// Languages
-		// * 0000 - Neutral - Firefox, Spotify
-		// * 0409 - en-US   - Discord, Steam, Edge, Epic
-		// * 0009 -         - NVidia
-
-		c16* tempDescription;
-		u32 descriptionLength;
-
-		// First try the neutral language
-		c16 subBlock[] = L"\\StringFileInfo\\000004b0\\FileDescription";
-		if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
-		{
-			wcscpy_s(name, ArrayCount(name), tempDescription);
-			return;
-		}
-
-		// Otherwise use the first available language
-		struct Translation
-		{
-			u16 language;
-			u16 codepage;
-		};
-
-		u32 translationSize;
-		Translation* translations;
-		b32 result = VerQueryValueW(versionInfo, L"\\VarFileInfo\\Translation", (void**) &translations, &translationSize);
-		NOTIFY_IF(!result, L"GetFileVersionInfoSizeW failed", break);
-
-		i32 translationCount = translationSize / sizeof(Translation);
-		for (i32 i = 0; i < translationCount; i++)
-		{
-			Translation& translation = translations[i];
-
-			c16 language[9];
-			wnsprintfW(language, ArrayCount(language), L"%04x%04x", translation.language, translation.codepage);
-			wmemcpy(&subBlock[16], language, ArrayCount(language) - 1);
-
-			// Some edge cases to be aware of:
-			// * Some programs have an FileDescription but it's empty (Fusion 360, for example)
-			// * I don't see an easy to to know if a codepage is UTF-16 compatible, so we take what we get and pray.
-
-			if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
-			{
-				if (descriptionLength != 0)
-				{
-					wcscpy_s(name, ArrayCount(name), tempDescription);
-					return;
-				}
-			}
-		}
-	}
-
-
-	// If we didn't find a file description (UWP applications) use the display name from the shell
-	{
-		CComPtr<IShellItem2> shellItem;
-		HRESULT hr = SHCreateItemFromParsingName(processPath, nullptr, IID_PPV_ARGS(&shellItem));
-		NOTIFY_IF_FAILED(L"SHCreateItemFromParsingName failed", hr, return);
-
-		CComHeapPtr<c16> value;
-		hr = shellItem->GetString(PKEY_ItemNameDisplayWithoutExtension, &value);
-		NOTIFY_IF_FAILED(L"IShellItem2::GetString failed", hr, return);
-
-		wcscpy_s(name, ArrayCount(name), value);
-		return;
-	}
-
-
-	// Fallback to the executable name
-	{
-		PROCESSENTRY32W processEntry;
-		processEntry.dwSize = sizeof(PROCESSENTRY32W);
-
-		for (b8 Continue = Process32FirstW(snapshot, &processEntry);
-				Continue;
-				Continue = Process32NextW(snapshot, &processEntry))
-		{
-			if (processEntry.th32ProcessID == processId)
-			{
-				wcscpy_s(name, ArrayCount(name), processEntry.szExeFile);
-				return;
-			}
-		}
-	}
-
-
-	// Failure
-	{
-		swprintf(name, ArrayCount(name), L"%i", processId);
-		return;
-	}
-
-	#undef NOTIFY_IF
-	#undef NOTIFY_IF_FAILED
-}
 
 b32
 ToggleMuteForCurrentApplication(NotificationWindow* notification)
@@ -496,8 +472,7 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 
 
 	// Find the currently focused process
-	DWORD focusedProcessId = 0;
-	c16 focusedProcessName[256];
+	ProcessInfo focusedProcess = {};
 	{
 		// GetForegroundWindow does not work for UWP applications.
 		GUITHREADINFO threadInfo = {};
@@ -507,10 +482,11 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 
 		HWND hwnd = threadInfo.hwndFocus ? threadInfo.hwndFocus : threadInfo.hwndActive;
 		NOTIFY_IF(!hwnd, L"Failed to find focused window", return false);
-		hr = GetWindowThreadProcessId(hwnd, &focusedProcessId);
+		hr = GetWindowThreadProcessId(hwnd, &focusedProcess.id);
 		NOTIFY_IF_FAILED(L"GetWindowThreadProcessId failed", hr, return false);
 
-		GetProcessName(notification, snapshot, focusedProcessId, focusedProcessName);
+		GetProcessName(notification, snapshot, focusedProcess);
+		GetProcessRoot(snapshot, focusedProcess);
 	}
 
 
@@ -539,9 +515,6 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 		b8 foundStream = false;
 		b32 mute = true;
 
-		// TODO: Still need to handle parent processes (Discord)
-		// TODO: Can this be done the other way around? Ask if stream process has a focused window
-
 		for (int i = 0; i < sessionCount; i++)
 		{
 			CComPtr<IAudioSessionControl> sessionControl;
@@ -552,11 +525,17 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 			hr = sessionControl->QueryInterface(IID_PPV_ARGS(&sessionControl2));
 			NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
 
-			DWORD processId;
-			hr = sessionControl2->GetProcessId(&processId);
+			ProcessInfo process = {};
+			hr = sessionControl2->GetProcessId(&process.id);
 			NOTIFY_IF_FAILED(L"IAudioSessionControl2::GetProcessId failed", hr, return false);
 
-			if (processId == focusedProcessId)
+			// TODO: Can this be done the other way around? Ask if stream process has a focused window
+
+			// We use the root process because some applications
+			// * Have a root process with an audio stream (Discord)
+			// * Have audio streams and no windows (Discord, NVidia Container)
+			GetProcessRoot(snapshot, process);
+			if (process.rootId == focusedProcess.rootId)
 			{
 				CComPtr<ISimpleAudioVolume> audioVolume;
 				hr = sessionControl->QueryInterface(IID_PPV_ARGS(&audioVolume));
@@ -581,7 +560,7 @@ ToggleMuteForCurrentApplication(NotificationWindow* notification)
 			: L"No Audio";
 
 		c16 message[256];
-		wnsprintfW(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcessName);
+		wnsprintfW(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcess.name);
 		Notify(notification, message);
 	}
 
