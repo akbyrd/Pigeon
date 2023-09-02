@@ -1,5 +1,9 @@
+#include <audiopolicy.h>
 #include <mmdeviceapi.h>
 #include <playsoundapi.h>
+#include <propkey.h>
+#include <Shobjidl.h>
+#include <tlhelp32.h>
 #include <Functiondiscoverykeys_devpkey.h>
 
 #include "IPolicyConfig.h"
@@ -11,26 +15,26 @@ enum struct AudioType
 	Recording,
 };
 
-static b32
+b32
 CycleAudioDevice(NotificationWindow* notification, AudioType audioType)
 {
 	// NOTE: CoInitialize is assumed to have been called.
 	HRESULT hr;
 
 
-	#define NOTIFY_IF(expression, string, reaction)      \
-	if (expression)                                      \
-	{                                                    \
-		Notify(notification, string, Severity::Warning); \
-		reaction;                                        \
-	}                                                    \
+	#define NOTIFY_IF(expression, string, reaction) \
+		if (expression) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		} \
 
-	#define NOTIFY_IF_FAILED(string, hr, reaction)                       \
-	if (FAILED(hr))                                                      \
-	{                                                                    \
-		NotifyWindowsError(notification, string, Severity::Warning, hr); \
-		reaction;                                                        \
-	}
+	#define NOTIFY_IF_FAILED(string, hr, reaction) \
+		if (FAILED(hr)) \
+		{ \
+			NotifyWindowsError(notification, string, Severity::Warning, hr); \
+			reaction; \
+		}
 
 
 	// Shared
@@ -211,6 +215,383 @@ OpenAudioRecordingDevicesWindow(NotificationWindow* notification)
 	return RunCommand(notification, command);
 }
 
+#if false
+struct ProcessInfo
+{
+	DWORD id;
+	DWORD rootId;
+	c16   name[MAX_PATH];
+	c16   description[256];
+};
+
+void
+GetProcessName(ProcessInfo& process, HANDLE snapshot)
+{
+	PROCESSENTRY32W processEntry;
+	processEntry.dwSize = sizeof(PROCESSENTRY32W);
+
+	for (b8 Continue = Process32FirstW(snapshot, &processEntry);
+			Continue;
+			Continue = Process32NextW(snapshot, &processEntry))
+	{
+		if (processEntry.th32ProcessID == process.id)
+		{
+			wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
+			break;
+		}
+	}
+}
+
+// TODO: Remove
+void
+GetProcessNameAndRoot(ProcessInfo& process, HANDLE snapshot)
+{
+	process.rootId = process.id;
+
+	PROCESSENTRY32W processEntry;
+	processEntry.dwSize = sizeof(PROCESSENTRY32W);
+
+	DWORD maybeParentProcessId = 0;
+
+	for (b8 Continue = Process32FirstW(snapshot, &processEntry);
+			Continue;
+			Continue = Process32NextW(snapshot, &processEntry))
+	{
+		if (processEntry.th32ProcessID == process.id)
+		{
+			maybeParentProcessId = processEntry.th32ParentProcessID;
+			wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
+			break;
+		}
+	}
+
+	// The system process has an id of 0 and a parent of 0. For that case, and
+	while (maybeParentProcessId)
+	{
+		for (b8 Continue = Process32FirstW(snapshot, &processEntry);
+			Continue;
+			Continue = Process32NextW(snapshot, &processEntry))
+		{
+			if (processEntry.th32ProcessID == maybeParentProcessId)
+			{
+				// Some processes have explorer.exe as their parent. We don't want to consider
+				// everything with explorer as a parent part of the same process so we stop the search.
+				c16* ignoredProcesses[] = {
+					L"explorer.exe",
+					L"svchost.exe",
+				};
+
+				for (c16* ignoredProcess : ignoredProcesses)
+				{
+					if (wcscmp(processEntry.szExeFile, ignoredProcess) == 0)
+					{
+						maybeParentProcessId = 0;
+						break;
+					}
+				}
+				if (maybeParentProcessId == 0)
+					break;
+
+				// Just to be safe stop the search if we ever hit a loop where the parent id is the same
+				// as the current id.
+				if (processEntry.th32ParentProcessID == maybeParentProcessId)
+				{
+					maybeParentProcessId = 0;
+					break;
+				}
+
+				process.rootId = maybeParentProcessId;
+				maybeParentProcessId = processEntry.th32ParentProcessID;
+				break;
+			}
+		}
+
+		// It's possible for a process to have parent that does not appear in the list. I suspect this
+		// is either an issue with permissions flags provided to CreateToolhelp32Snapshot.
+		// Until/unless this becomes and issue in practice just abort the search.
+		maybeParentProcessId = 0;
+	}
+}
+#endif
+
+void
+GetProcessName(NotificationWindow* notification, HANDLE snapshot, DWORD processId, c16 (&name)[256])
+{
+	// NOTE: CoInitialize is assumed to have been called.
+
+
+	#define NOTIFY_IF(expression, string, reaction) \
+		if (expression) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		} \
+
+	#define NOTIFY_IF_FAILED(string, hr, reaction) \
+		if (FAILED(hr)) \
+		{ \
+			NotifyWindowsError(notification, string, Severity::Warning, hr); \
+			reaction; \
+		}
+
+
+	// Open process returns 0, not INVALID_HANDLE_VALUE
+	HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+	NOTIFY_IF(!process, L"OpenProcess failed", return);
+	defer { CloseHandle(process); };
+
+	c16 processPath[MAX_PATH];
+	DWORD pathLength = ArrayCount(processPath);
+	b32 result = QueryFullProcessImageNameW(process, 0, processPath, &pathLength);
+	NOTIFY_IF(!result, L"QueryFullProcessImageNameW failed", return);
+
+
+	// Try the FileDescription property of the version info
+	for (;;)
+	{
+		DWORD versionInfoSize = GetFileVersionInfoSizeW(processPath, nullptr);
+		NOTIFY_IF(!versionInfoSize, L"GetFileVersionInfoSizeW failed", break);
+
+		u8* versionInfo = new u8[versionInfoSize];
+		defer { delete[] versionInfo; };
+		result = GetFileVersionInfoW(processPath, 0, versionInfoSize, versionInfo);
+		NOTIFY_IF(!result, L"GetFileVersionInfoW failed", break);
+
+		// It's hard to know which language and code page to use when querying the file
+		// description. Different programs use different combinations. Trying to match them
+		// against the user's preferred lanaguage would be hairy, so we try the neutral
+		// language, then fall back to first available combination.
+		//
+		// Languages
+		// * 0000 - Neutral - Firefox, Spotify
+		// * 0409 - en-US   - Discord, Steam, Edge, Epic
+		// * 0009 -         - NVidia
+
+		c16* tempDescription;
+		u32 descriptionLength;
+
+		// First try the neutral language
+		c16 subBlock[] = L"\\StringFileInfo\\000004b0\\FileDescription";
+		if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
+		{
+			wcscpy_s(name, ArrayCount(name), tempDescription);
+			return;
+		}
+
+		// Otherwise use the first available language
+		struct Translation
+		{
+			u16 language;
+			u16 codepage;
+		};
+
+		u32 translationSize;
+		Translation* translations;
+		b32 result = VerQueryValueW(versionInfo, L"\\VarFileInfo\\Translation", (void**) &translations, &translationSize);
+		NOTIFY_IF(!result, L"GetFileVersionInfoSizeW failed", break);
+
+		i32 translationCount = translationSize / sizeof(Translation);
+		for (i32 i = 0; i < translationCount; i++)
+		{
+			Translation& translation = translations[i];
+
+			c16 language[9];
+			wnsprintfW(language, ArrayCount(language), L"%04x%04x", translation.language, translation.codepage);
+			wmemcpy(&subBlock[16], language, ArrayCount(language) - 1);
+
+			// Some edge cases to be aware of:
+			// * Some programs have an FileDescription but it's empty (Fusion 360, for example)
+			// * I don't see an easy to to know if a codepage is UTF-16 compatible, so we take what we get and pray.
+
+			if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
+			{
+				if (descriptionLength != 0)
+				{
+					wcscpy_s(name, ArrayCount(name), tempDescription);
+					return;
+				}
+			}
+		}
+	}
+
+
+	// If we didn't find a file description (UWP applications) use the display name from the shell
+	{
+		CComPtr<IShellItem2> shellItem;
+		HRESULT hr = SHCreateItemFromParsingName(processPath, nullptr, IID_PPV_ARGS(&shellItem));
+		NOTIFY_IF_FAILED(L"SHCreateItemFromParsingName failed", hr, return);
+
+		CComHeapPtr<c16> value;
+		hr = shellItem->GetString(PKEY_ItemNameDisplayWithoutExtension, &value);
+		NOTIFY_IF_FAILED(L"IShellItem2::GetString failed", hr, return);
+
+		wcscpy_s(name, ArrayCount(name), value);
+		return;
+	}
+
+
+	// Fallback to the executable name
+	{
+		PROCESSENTRY32W processEntry;
+		processEntry.dwSize = sizeof(PROCESSENTRY32W);
+
+		for (b8 Continue = Process32FirstW(snapshot, &processEntry);
+				Continue;
+				Continue = Process32NextW(snapshot, &processEntry))
+		{
+			if (processEntry.th32ProcessID == processId)
+			{
+				wcscpy_s(name, ArrayCount(name), processEntry.szExeFile);
+				return;
+			}
+		}
+	}
+
+
+	// Failure
+	{
+		swprintf(name, ArrayCount(name), L"%i", processId);
+		return;
+	}
+
+	#undef NOTIFY_IF
+	#undef NOTIFY_IF_FAILED
+}
+
+b32
+ToggleMuteForCurrentApplication(NotificationWindow* notification)
+{
+	// NOTE: CoInitialize is assumed to have been called.
+	HRESULT hr;
+
+
+	#define NOTIFY_IF(expression, string, reaction) \
+		if (expression) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		} \
+
+	#define NOTIFY_IF_FAILED(string, hr, reaction) \
+		if (FAILED(hr)) \
+		{ \
+			NotifyWindowsError(notification, string, Severity::Warning, hr); \
+			reaction; \
+		}
+
+	#define NOTIFY_IF_INVALID_HANDLE(string, handle, reaction) \
+		if (handle == INVALID_HANDLE_VALUE) \
+		{ \
+			Notify(notification, string, Severity::Warning); \
+			reaction; \
+		}
+
+
+	HANDLE snapshot = INVALID_HANDLE_VALUE;
+	defer { CloseHandle(snapshot); };
+	{
+		snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+		NOTIFY_IF_INVALID_HANDLE(L"CreateToolhelp32Snapshot failed", snapshot, return false);
+	}
+
+
+	// Find the currently focused process
+	DWORD focusedProcessId = 0;
+	c16 focusedProcessName[256];
+	{
+		// GetForegroundWindow does not work for UWP applications.
+		GUITHREADINFO threadInfo = {};
+		threadInfo.cbSize = sizeof(GUITHREADINFO);
+		b32 result = GetGUIThreadInfo(0, &threadInfo);
+		NOTIFY_IF(!result, L"GetGUIThreadInfo failed", return false);
+
+		HWND hwnd = threadInfo.hwndFocus ? threadInfo.hwndFocus : threadInfo.hwndActive;
+		NOTIFY_IF(!hwnd, L"Failed to find focused window", return false);
+		hr = GetWindowThreadProcessId(hwnd, &focusedProcessId);
+		NOTIFY_IF_FAILED(L"GetWindowThreadProcessId failed", hr, return false);
+
+		GetProcessName(notification, snapshot, focusedProcessId, focusedProcessName);
+	}
+
+
+	// Mute all audio streams associated with the process
+	{
+		CComPtr<IMMDeviceEnumerator> deviceEnumerator;
+		hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+		NOTIFY_IF_FAILED(L"CoCreateInstance failed", hr, return false);
+
+		CComPtr<IMMDevice> currentDevice;
+		hr = deviceEnumerator->GetDefaultAudioEndpoint(EDataFlow::eRender, ERole::eConsole, &currentDevice);
+		NOTIFY_IF_FAILED(L"GetDefaultAudioEndpoint failed", hr, return false);
+
+		CComPtr<IAudioSessionManager2> sessionManager;
+		hr = currentDevice->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, (void**) &sessionManager);
+		NOTIFY_IF_FAILED(L"IMMDevice::Activate failed", hr, return false);
+
+		CComPtr<IAudioSessionEnumerator> sessionList;
+		hr = sessionManager->GetSessionEnumerator(&sessionList);
+		NOTIFY_IF_FAILED(L"GetSessionEnumerator failed", hr, return false);
+
+		int sessionCount;
+		hr = sessionList->GetCount(&sessionCount);
+		NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetCount failed", hr, return false);
+
+		b8 foundStream = false;
+		b32 mute = true;
+
+		// TODO: Still need to handle parent processes (Discord)
+		// TODO: Can this be done the other way around? Ask if stream process has a focused window
+
+		for (int i = 0; i < sessionCount; i++)
+		{
+			CComPtr<IAudioSessionControl> sessionControl;
+			hr = sessionList->GetSession(i, &sessionControl);
+			NOTIFY_IF_FAILED(L"IAudioSessionEnumerator::GetSession failed", hr, return false);
+
+			CComPtr<IAudioSessionControl2> sessionControl2;
+			hr = sessionControl->QueryInterface(IID_PPV_ARGS(&sessionControl2));
+			NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
+
+			DWORD processId;
+			hr = sessionControl2->GetProcessId(&processId);
+			NOTIFY_IF_FAILED(L"IAudioSessionControl2::GetProcessId failed", hr, return false);
+
+			if (processId == focusedProcessId)
+			{
+				CComPtr<ISimpleAudioVolume> audioVolume;
+				hr = sessionControl->QueryInterface(IID_PPV_ARGS(&audioVolume));
+				NOTIFY_IF_FAILED(L"IAudioSessionControl::QueryInterface failed", hr, return false);
+
+				if (!foundStream)
+				{
+					hr = audioVolume->GetMute(&mute);
+					NOTIFY_IF_FAILED(L"GetMute failed", hr, return false);
+
+					foundStream = true;
+					mute = !mute;
+				}
+
+				hr = audioVolume->SetMute(mute, nullptr);
+				NOTIFY_IF_FAILED(L"SetMute failed", hr, return false);
+			}
+		}
+
+		c16* muteStr = foundStream
+			? mute ? L"Muted" : L"Unmuted"
+			: L"No Audio";
+
+		c16 message[256];
+		wnsprintfW(message, ArrayCount(message), L"%s - %s", muteStr, focusedProcessName);
+		Notify(notification, message);
+	}
+
+	return true;
+
+	#undef NOTIFY_IF
+	#undef NOTIFY_IF_FAILED
+	#undef NOTIFY_IF_INVALID_HANDLE
+}
+
 b32
 OpenVolumeMixerWindow(NotificationWindow* notification)
 {
@@ -233,7 +614,7 @@ OpenVolumeMixerWindow(NotificationWindow* notification)
 	// 10/11 pixel offset, but the net result is exactly the same.
 	i32 coords = resolution.y * 65536 + resolution.x;
 
-	c8 command[1024];
+	c8 command[256];
 	snprintf(command, ArrayCount(command), "SndVol.exe -m %i", coords);
 	return RunCommand(notification, command);
 }

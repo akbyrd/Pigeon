@@ -12,8 +12,6 @@ const IID IID_IPolicyConfig = __uuidof(IPolicyConfig);
 class DECLSPEC_UUID("870af99c-171d-4f9e-af0d-e63df40c2bc9") CPolicyConfigClient; // Win7+
 const CLSID CLSID_CPolicyConfigClient = __uuidof(CPolicyConfigClient);
 
-struct WAVEFORMATEX;
-
 interface IPolicyConfig : public IUnknown
 {
 public:

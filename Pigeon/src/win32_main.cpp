@@ -340,7 +340,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{ MOD_CONTROL, VK_F10, &OpenAudioRecordingDevicesWindow  },
 		{           0, VK_F11, &SetMaximumRefreshRate            },
 		{ MOD_CONTROL, VK_F11, &OpenDisplayAdapterSettingsWindow },
-		{           0, VK_F12, nullptr                           },
+		{           0, VK_F12, &ToggleMuteForCurrentApplication  },
 		{ MOD_CONTROL, VK_F12, &OpenVolumeMixerWindow            },
 
 		#if false

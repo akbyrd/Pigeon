@@ -15,6 +15,7 @@ typedef double f64;
 typedef char    c8;
 typedef wchar_t c16;
 
+typedef bool b8;
 typedef int b32;
 
 typedef size_t index;
@@ -46,3 +47,29 @@ struct v2i
 	i32 x;
 	i32 y;
 };
+
+template<typename TLambda>
+struct deferred final
+{
+	const TLambda lambda;
+	deferred(TLambda&& _lambda) : lambda(_lambda) {}
+	~deferred() { lambda(); }
+
+	// NOTE: Avoids warning
+	void operator=(const deferred&) = delete;
+};
+
+struct
+{
+	template<typename TLambda>
+	deferred<TLambda>
+	operator<< (TLambda&& lambda)
+	{
+		return deferred<TLambda>(std::forward<TLambda>(lambda));
+	}
+} make_deferred;
+
+#define DEFER_UNIQUE_NAME2(x, y) x ## y
+#define DEFER_UNIQUE_NAME1(x, y) DEFER_UNIQUE_NAME2(x, y)
+#define DEFER_UNIQUE_NAME() DEFER_UNIQUE_NAME1(__defer_, __COUNTER__)
+#define defer auto DEFER_UNIQUE_NAME() = make_deferred << [&]
