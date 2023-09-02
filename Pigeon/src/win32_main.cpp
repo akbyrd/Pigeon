@@ -93,7 +93,7 @@ Initialize(
 		windowClass.lpszClassName = L"Pigeon Notification Class";
 
 		ATOM classAtom = RegisterClassW(&windowClass);
-		NOTIFY_WINDOWS_IF(classAtom == INVALID_ATOM, Severity::Error, return false, L"RegisterClassW failed");
+		WINDOWS_ERROR_IF(classAtom == INVALID_ATOM, return false, L"RegisterClassW failed");
 
 		HWND hwnd = CreateWindowExW(
 			WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
@@ -109,7 +109,7 @@ Initialize(
 			hInstance,
 			state
 		);
-		NOTIFY_IF_INVALID_HANDLE(hwnd, Severity::Error, return false, L"CreateWindowExW failed");
+		ERROR_IF_INVALID_HANDLE(hwnd, return false, L"CreateWindowExW failed");
 
 		state->hwnd = hwnd;
 		phase = InitPhase::WindowCreated;
@@ -129,7 +129,7 @@ Initialize(
 		FILETIME win32_startFileTime = {};
 		FILETIME unusued;
 		b32 success = GetProcessTimes(hProcess, &win32_startFileTime, &unusued, &unusued, &unusued);
-		NOTIFY_WINDOWS_IF(!success, Severity::Error, return false, L"GetProcessTimes failed");
+		WINDOWS_ERROR_IF(!success, return false, L"GetProcessTimes failed");
 
 		ULARGE_INTEGER win32_startTime = {};
 		win32_startTime.LowPart  = win32_startFileTime.dwLowDateTime;
@@ -140,17 +140,17 @@ Initialize(
 		processID = GetProcessId(hProcess);
 
 		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
-		NOTIFY_WINDOWS_IF(!WM_NEWINSTANCE, Severity::Error, return false, L"RegisterWindowMessage failed");
+		WINDOWS_ERROR_IF(!WM_NEWINSTANCE, return false, L"RegisterWindowMessage failed");
 
 		// TODO: Namespace?
 		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
-		NOTIFY_WINDOWS_IF(!singleInstanceMutex, Severity::Error, return false, L"CreateMutex failed");
+		WINDOWS_ERROR_IF(!singleInstanceMutex, return false, L"CreateMutex failed");
 
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			// TODO: Better to enumerate processes instead of broadcasting
 			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, processID);
-			NOTIFY_WINDOWS_IF(!success, Severity::Error, return false, L"PostMessage failed");
+			WINDOWS_ERROR_IF(!success, return false, L"PostMessage failed");
 
 			// TODO: Not handling messages while waiting
 			u32 uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
@@ -162,7 +162,7 @@ Initialize(
 				return false;
 			}
 
-			NOTIFY_WINDOWS_IF(uResult == WAIT_ABANDONED, Severity::Warning, NOTHING, L"WaitForSingleObject WAIT_ABANDON");
+			WINDOWS_WARN_IF(uResult == WAIT_ABANDONED, NOTHING, L"WaitForSingleObject WAIT_ABANDON");
 		}
 
 		phase = InitPhase::SingleInstanceEnforced;
@@ -195,7 +195,7 @@ Initialize(
 	// Initialize systems
 	{
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
-		NOTIFY_IF_FAILED(hr, Severity::Error, return false, L"CoInitializeEx failed");
+		ERROR_IF_FAILED(hr, return false, L"CoInitializeEx failed");
 
 		phase = InitPhase::SystemsInitialized;
 	}
@@ -205,7 +205,7 @@ Initialize(
 	{
 		c16* logFolderPath = nullptr;
 		HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &logFolderPath);
-		NOTIFY_IF_FAILED(hr, Severity::Error, return false, L"SHGetFolderPath failed");
+		ERROR_IF_FAILED(hr, return false, L"SHGetFolderPath failed");
 
 		swprintf(state->logFilePath, ArrayCount(state->logFilePath), L"%s\\Pigeon", logFolderPath);
 		b32 result = CreateDirectoryW(state->logFilePath, nullptr);
@@ -250,7 +250,7 @@ Initialize(
 b32
 OpenLogFile(NotificationState* state)
 {
-	NOTIFY_IF(!state->logFilePath[0], Severity::Warning, return false, L"No log file");
+	WARN_IF(!state->logFilePath[0], return false, L"No log file")
 
 	// The return value is treated as an int. It's not a real HINSTANCE
 	HINSTANCE result = ShellExecuteW(
@@ -260,7 +260,7 @@ OpenLogFile(NotificationState* state)
 		nullptr,
 		nullptr,
 		SW_SHOW);
-	NOTIFY_IF((i64) result < 32, Severity::Warning, return false, L"ShellExecuteW failed");
+	WARN_IF((i64) result < 32, return false, L"ShellExecuteW failed")
 
 	return true;
 }
@@ -288,7 +288,7 @@ UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HAN
 
 
 	b32 success = ReleaseMutex(singleInstanceMutex);
-	NOTIFY_WINDOWS_IF(!success, Severity::Warning, return false, L"ReleaseMutex failed");
+	WINDOWS_WARN_IF(!success, return false, L"ReleaseMutex failed");
 
 	singleInstanceMutex = nullptr;
 
@@ -300,7 +300,7 @@ RunCommand(NotificationState* state, c8* command)
 {
 	u32 uResult = WinExec(command, SW_NORMAL);
 	// TODO: Can we get an error message from the result value?
-	NOTIFY_IF(uResult < 32, Severity::Warning, return false, L"WinExec failed: %u", uResult);
+	WARN_IF(uResult < 32, return false, L"WinExec failed: %u", uResult)
 
 	return true;
 }
@@ -333,8 +333,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		state->timerID          = 1;
 		state->tickFrequency    = tickFrequency;
 
-		// DEBUG:
-		Notify(state, L"Started!");
+		Notify(state, Severity::Info, L"Pigeon Started");
 	}
 
 
@@ -382,7 +381,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Misc
 	b32 success = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-	NOTIFY_WINDOWS_IF(!success, Severity::Warning, NOTHING, L"SetPriorityClass failed");
+	WINDOWS_WARN_IF(!success, NOTHING, L"SetPriorityClass failed");
 
 
 	// Message loop
@@ -473,16 +472,16 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 								messageName = buffer;
 							}
 
-							NotifyFormat(state, L"Unexpected message: %s, w:0x%1llX", Severity::Warning, messageName, msg.wParam);
+							NotifyFormat(state, Severity::Warning, L"Unexpected message: %s, w:0x%1llX", messageName, msg.wParam);
 
 							c16 log[32];
 							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%1X), w:0x%1llX\n", msg.message, msg.wParam);
-							NOTIFY_IF(logLen < 0, Severity::Warning, break, L"Log format failed");
+							WARN_IF(logLen < 0, break, L"Log format failed")
 
 							// NOTE: This still succeeds if the file is deleted. Strange.
 							i32 logBytes = logLen * sizeof(log[0]);
 							b32 result = WriteFile(logFile, log, logBytes, nullptr, nullptr);
-							NOTIFY_IF(!result, Severity::Warning, NOTHING, L"Log write failed");
+							WARN_IF(!result, NOTHING, L"Log write failed")
 						}
 						break;
 					}

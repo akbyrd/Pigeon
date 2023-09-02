@@ -58,7 +58,7 @@ SetMaximumRefreshRate(NotificationState* state)
 		{
 			u32 requiredFlags = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
 			b8 success = (displaySettings.dmFields & requiredFlags) == requiredFlags;
-			NOTIFY_IF(!success, Severity::Warning, continue, L"EnumDisplaySettingsEx didn't set necessary fields");
+			WARN_IF(!success, continue, L"EnumDisplaySettingsEx didn't set necessary fields")
 
 			if (!AreDisplayModesEqualIgnoringFrequency(&displaySettings, &currentDisplaySettings))
 				continue;
@@ -74,9 +74,9 @@ SetMaximumRefreshRate(NotificationState* state)
 		newDisplaySettings.dmFields = DM_DISPLAYFREQUENCY;
 
 		i32 iResult = ChangeDisplaySettingsW(&newDisplaySettings, CDS_UPDATEREGISTRY | CDS_GLOBAL);
-		NOTIFY_IF(iResult != DISP_CHANGE_SUCCESSFUL, Severity::Warning, return false, L"ChangeDisplaySettings failed: %i", iResult);
+		WARN_IF(iResult != DISP_CHANGE_SUCCESSFUL, return false, L"ChangeDisplaySettings failed: %i", iResult)
 
-		NotifyFormat(state, L"%u Hz", newDisplaySettings.dmDisplayFrequency);
+		NotifyFormat(state, Severity::Info, L"%u Hz", newDisplaySettings.dmDisplayFrequency);
 	}
 
 	return true;

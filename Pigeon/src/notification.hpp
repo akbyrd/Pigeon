@@ -71,12 +71,24 @@ u8 LogicalToActualIndex(NotificationState* state, u8 index);
 		reaction; \
 	} \
 
+#define WARN_IF(expression, reaction, string, ...) \
+	NOTIFY_IF(expression, Severity::Warning, reaction, string, ## __VA_ARGS__)
+
+#define ERROR_IF(expression, reaction, string, ...) \
+	NOTIFY_IF(expression, Severity::Error, reaction, string, ## __VA_ARGS__)
+
 #define NOTIFY_IF_FAILED(hr, severity, reaction, string) \
 	if (FAILED(hr)) \
 	{ \
 		NotifyWindowsError(state, hr, severity, string); \
 		reaction; \
 	}
+
+#define WARN_IF_FAILED(hr, reaction, string) \
+	NOTIFY_IF_FAILED(hr, Severity::Warning, reaction, string)
+
+#define ERROR_IF_FAILED(hr, reaction, string) \
+	NOTIFY_IF_FAILED(hr, Severity::Error, reaction, string)
 
 #define NOTIFY_IF_INVALID_HANDLE(handle, severity, reaction, string) \
 	if (handle == INVALID_HANDLE_VALUE) \
@@ -85,12 +97,24 @@ u8 LogicalToActualIndex(NotificationState* state, u8 index);
 		reaction; \
 	}
 
-#define NOTIFY_WINDOWS_IF(expression, severity, reaction, string) \
+#define WARN_IF_INVALID_HANDLE(handle, reaction, string) \
+	NOTIFY_IF_INVALID_HANDLE(handle, Severity::Warning, reaction, string)
+
+#define ERROR_IF_INVALID_HANDLE(handle, reaction, string) \
+	NOTIFY_IF_INVALID_HANDLE(handle, Severity::Error, reaction, string)
+
+#define WINDOWS_NOTIFY_IF(expression, severity, reaction, string) \
 	if (expression) \
 	{ \
 		NotifyWindowsError(state, severity, string); \
 		reaction; \
 	} \
+
+#define WINDOWS_WARN_IF(expression, reaction, string) \
+	WINDOWS_NOTIFY_IF(expression, Severity::Warning, reaction, string)
+
+#define WINDOWS_ERROR_IF(expression, reaction, string) \
+	WINDOWS_NOTIFY_IF(expression, Severity::Error, reaction, string)
 
 #define NOTHING
 
@@ -150,12 +174,6 @@ Notify(NotificationState* state, Severity severity, c16* text)
 }
 
 inline void
-Notify(NotificationState* state, c16* text)
-{
-	Notify(state, Severity::Info, text);
-}
-
-inline void
 NotifyFormat(NotificationState* state, Severity severity, c16* format, va_list args)
 {
 	c16 buffer[ArrayCount(Notification::text)] = {};
@@ -171,17 +189,6 @@ NotifyFormat(NotificationState* state, Severity severity, c16* format, ...)
 	va_start(args, format);
 
 	NotifyFormat(state, severity, format, args);
-
-	va_end(args);
-}
-
-inline void
-NotifyFormat(NotificationState* state, c16* format, ...)
-{
-	va_list args;
-	va_start(args, format);
-
-	NotifyFormat(state, Severity::Info, format, args);
 
 	va_end(args);
 }
@@ -276,7 +283,7 @@ ProcessNotificationQueue(NotificationState* state)
 		&textSizeRect,
 		DT_CALCRECT | DT_SINGLELINE
 	);
-	NOTIFY_IF(!iResult, Severity::Warning, return false, L"DrawText failed: %i", iResult);
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
 
 	i32 textWidth = textSizeRect.right - textSizeRect.left;
 
@@ -316,7 +323,7 @@ ProcessNotificationQueue(NotificationState* state)
 
 	COLORREF previousColor = {};
 	previousColor = SetTextColor(state->bitmapDC, newColor);
-	NOTIFY_WINDOWS_IF(previousColor == CLR_INVALID, Severity::Warning, return false, L"SetTextColor failed");
+	WINDOWS_WARN_IF(previousColor == CLR_INVALID, return false, L"SetTextColor failed");
 
 	RECT textRect = {};
 	textRect.left = state->textPadding;
@@ -330,7 +337,7 @@ ProcessNotificationQueue(NotificationState* state)
 		&textRect,
 		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
 	);
-	NOTIFY_IF(!iResult, Severity::Warning, return false, L"DrawText failed: %i", iResult);
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
 
 
 	// TODO: Only do text rect
@@ -382,7 +389,7 @@ ProcessNotificationQueue(NotificationState* state)
 			// elapses. This means if you continually queue messages faster than the animation tick you
 			// can get the notification to hang.
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-			NOTIFY_WINDOWS_IF(!uResult, Severity::Warning, return false, L"SetTimer failed");
+			WINDOWS_WARN_IF(!uResult, return false, L"SetTimer failed");
 
 			break;
 		}
@@ -396,7 +403,7 @@ ProcessNotificationQueue(NotificationState* state)
 
 			// TODO: This will overshoot by an amount based on the animation step duration
 			uResult = SetTimer(state->hwnd, state->timerID, state->animUpdateMS, nullptr);
-			NOTIFY_WINDOWS_IF(!uResult, Severity::Warning, return false, L"SetTimer failed");
+			WINDOWS_WARN_IF(!uResult, return false, L"SetTimer failed");
 
 			break;
 		}
@@ -404,7 +411,7 @@ ProcessNotificationQueue(NotificationState* state)
 
 	// NOTE: Update the window immediately, without worrying about USER_TIMER_MINIMUM
 	success = PostMessageW(state->hwnd, WM_TIMER, state->timerID, NULL);
-	NOTIFY_WINDOWS_IF(!success, Severity::Warning, return false, L"PostMessage failed");
+	WINDOWS_WARN_IF(!success, return false, L"PostMessage failed");
 
 	state->isDirty = true;
 
@@ -435,7 +442,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			SetLastError(0);
 
 			i64 iResult = SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LPARAM) state);
-			NOTIFY_WINDOWS_IF(iResult == 0 && GetLastError() != 0, Severity::Error, return false, L"SetWindowLongPtr failed");
+			WINDOWS_ERROR_IF(iResult == 0 && GetLastError() != 0, return false, L"SetWindowLongPtr failed");
 			break;
 		}
 
@@ -457,10 +464,10 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			bitmapInfo.bmiColors[0]              = {};
 
 			HDC screenDC = GetDC(nullptr);
-			NOTIFY_IF(!screenDC, Severity::Warning, return -1, L"GetDC failed");
+			WARN_IF(!screenDC, return -1, L"GetDC failed")
 
 			state->bitmapDC = CreateCompatibleDC(screenDC);
-			NOTIFY_IF(!state->bitmapDC, Severity::Warning, return -1, L"CreateCompatibleDC failed");
+			WARN_IF(!state->bitmapDC, return -1, L"CreateCompatibleDC failed")
 
 			state->bitmap = CreateDIBSection(
 				state->bitmapDC,
@@ -470,16 +477,16 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				nullptr,
 				0
 			);
-			NOTIFY_IF(!state->pixels, Severity::Warning, return -1, L"CreateDIBSection failed");
+			WARN_IF(!state->pixels, return -1, L"CreateDIBSection failed")
 
 			i32 iResult = ReleaseDC(nullptr, screenDC);
-			NOTIFY_IF(iResult == 0, Severity::Warning, return -1, L"ReleaseDC failed");
+			WARN_IF(iResult == 0, return -1, L"ReleaseDC failed")
 
 			b32 success = GdiFlush();
-			NOTIFY_IF(!success, Severity::Warning, return -1, L"GdiFlush failed");
+			WARN_IF(!success, return -1, L"GdiFlush failed")
 
 			state->previousBitmap = (HBITMAP) SelectObject(state->bitmapDC, state->bitmap);
-			NOTIFY_IF(!state->previousBitmap, Severity::Warning, return -1, L"SelectObject failed");
+			WARN_IF(!state->previousBitmap, return -1, L"SelectObject failed")
 
 
 			// Font
@@ -487,20 +494,20 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			nonClientMetrics.cbSize = sizeof(nonClientMetrics);
 
 			success = SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, nonClientMetrics.cbSize, &nonClientMetrics, 0);
-			NOTIFY_WINDOWS_IF(!success, Severity::Warning, return -1, L"SystemParametersInfo failed");
+			WINDOWS_WARN_IF(!success, return -1, L"SystemParametersInfo failed");
 
 			state->font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
-			NOTIFY_IF(!state->font, Severity::Warning, return -1, L"CreateFontIndirect failed");
+			WARN_IF(!state->font, return -1, L"CreateFontIndirect failed")
 
 			state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
-			NOTIFY_IF(!state->previousFont, Severity::Warning, return -1, L"SelectObject failed");
+			WARN_IF(!state->previousFont, return -1, L"SelectObject failed")
 
 			iResult = SetBkMode(state->bitmapDC, TRANSPARENT);
-			NOTIFY_IF(iResult == 0, Severity::Warning, return -1, L"SetBkMode failed");
+			WARN_IF(iResult == 0, return -1, L"SetBkMode failed")
 
 			state->isInitialized = true;
 			success = PostMessageW(hwnd, WM_PROCESSQUEUE, 0, 0);
-			NOTIFY_WINDOWS_IF(!success, Severity::Warning, NOTHING, L"PostMessage failed");
+			WINDOWS_WARN_IF(!success, NOTHING, L"PostMessage failed");
 
 			return 0;
 		}
@@ -521,26 +528,26 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			HGDIOBJ previousObject;
 			previousObject = SelectObject(state->bitmapDC, state->previousFont);
 			state->previousFont = nullptr;
-			NOTIFY_IF(!previousObject, Severity::Warning, NOTHING, L"SelectObject failed");
+			WARN_IF(!previousObject, NOTHING, L"SelectObject failed")
 
 			b32 success;
 			success = DeleteObject(state->font);
 			state->font = nullptr;
-			NOTIFY_IF(!success, Severity::Warning, NOTHING, L"DeleteObject failed");
+			WARN_IF(!success, NOTHING, L"DeleteObject failed")
 
 			// Delete bitmap
 			previousObject = SelectObject(state->bitmapDC, state->previousBitmap);
 			state->previousBitmap = nullptr;
-			NOTIFY_IF(!previousObject, Severity::Warning, NOTHING, L"SelectObject failed");
+			WARN_IF(!previousObject, NOTHING, L"SelectObject failed")
 
 			success = DeleteObject(state->bitmap);
 			state->bitmap = nullptr;
-			NOTIFY_IF(!success, Severity::Warning, NOTHING, L"DeleteObject failed");
+			WARN_IF(!success, NOTHING, L"DeleteObject failed")
 
 			// Delete DC
 			success = DeleteDC(state->bitmapDC);
 			state->bitmapDC = nullptr;
-			NOTIFY_IF(!success, Severity::Warning, NOTHING, L"DeleteDC failed");
+			WARN_IF(!success, NOTHING, L"DeleteDC failed")
 
 			return 0;
 		}
@@ -602,7 +609,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 								// TODO: Round?
 								u32 remainingMS = (u32) ((state->animIdleTicks - animTicks) / state->tickFrequency * 1000.);
 								uResult = SetTimer(hwnd, state->timerID, remainingMS, nullptr);
-								NOTIFY_WINDOWS_IF(uResult == 0, Severity::Warning, NOTHING, L"SetTimer failed");
+								WINDOWS_WARN_IF(uResult == 0, NOTHING, L"SetTimer failed");
 							}
 							else
 							{
@@ -613,7 +620,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 								// TODO: Formalize state changes
 								uResult = SetTimer(hwnd, state->timerID, state->animUpdateMS, nullptr);
-								NOTIFY_WINDOWS_IF(uResult == 0, Severity::Warning, NOTHING, L"SetTimer failed");
+								WINDOWS_WARN_IF(uResult == 0, NOTHING, L"SetTimer failed");
 
 								changed = true;
 								continue;
@@ -676,7 +683,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							newAlpha = 0;
 
 							success = KillTimer(hwnd, state->timerID);
-							NOTIFY_WINDOWS_IF(!success, Severity::Warning, break, L"KillTimer failed");
+							WINDOWS_WARN_IF(!success, break, L"KillTimer failed");
 
 							ShowWindow(hwnd, SW_HIDE);
 
@@ -708,7 +715,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							&blendFunction,
 							ULW_ALPHA
 						);
-						NOTIFY_WINDOWS_IF(!success, Severity::Warning, return 0, L"UpdateLayeredWindow failed");
+						WINDOWS_WARN_IF(!success, return 0, L"UpdateLayeredWindow failed");
 
 						state->isDirty = false;
 					}
