@@ -155,7 +155,7 @@ Notify(NotificationState* state, Severity severity, c16* text)
 	// Queue
 	u8 nextIndex = LogicalToActualIndex(state, state->queueCount);
 	state->queue[nextIndex].severity = severity;
-	StrCpyW(state->queue[nextIndex].text, text);
+	wcscpy_s(state->queue[nextIndex].text, text);
 	state->queueCount++;
 
 

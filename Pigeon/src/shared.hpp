@@ -73,3 +73,5 @@ struct
 #define DEFER_UNIQUE_NAME1(x, y) DEFER_UNIQUE_NAME2(x, y)
 #define DEFER_UNIQUE_NAME() DEFER_UNIQUE_NAME1(__defer_, __COUNTER__)
 #define defer auto DEFER_UNIQUE_NAME() = make_deferred << [&]
+
+b32 RunCommand(struct NotificationState*, c8*);

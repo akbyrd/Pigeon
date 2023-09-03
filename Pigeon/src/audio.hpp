@@ -241,7 +241,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 		c16 subBlock[] = L"\\StringFileInfo\\000004b0\\FileDescription";
 		if (VerQueryValueW(versionInfo, subBlock, (void**) &tempDescription, &descriptionLength))
 		{
-			wcscpy_s(process.name, ArrayCount(process.name), tempDescription);
+			wcscpy_s(process.name, tempDescription);
 			return;
 		}
 
@@ -274,7 +274,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 			{
 				if (descriptionLength != 0)
 				{
-					wcscpy_s(process.name, ArrayCount(process.name), tempDescription);
+					wcscpy_s(process.name, tempDescription);
 					return;
 				}
 			}
@@ -292,7 +292,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 		hr = shellItem->GetString(PKEY_ItemNameDisplayWithoutExtension, &value);
 		WARN_IF_FAILED(hr, return, L"IShellItem2::GetString failed");
 
-		wcscpy_s(process.name, ArrayCount(process.name), value);
+		wcscpy_s(process.name, value);
 		return;
 	}
 
@@ -308,7 +308,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 		{
 			if (processEntry.th32ProcessID == process.id)
 			{
-				wcscpy_s(process.name, ArrayCount(process.name), processEntry.szExeFile);
+				wcscpy_s(process.name, processEntry.szExeFile);
 				return;
 			}
 		}
