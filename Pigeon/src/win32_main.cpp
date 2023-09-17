@@ -54,35 +54,9 @@
 #include "video.hpp"
 #include "WindowMessageStrings.h"
 
-// TODO: Would it be better to refactor the Notify process to be able to reserve the next spot, fill
-// the buffer, then process the notification?
-
-// TODO: BUG: Show warning, show another warning while first is hiding => shows 2 warnings
-// (repeating the first?)
-// TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few
-// seconds)
-// TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
-// TODO: SetProcessDPIAware?
-// TODO: Minimize the number of link dependencies
-
-// TODO: Pigeon image on startup
-// TODO: Pigeon SFX
-// TODO: Line on notification indicating queue count (colored if warning/error exists?)
-
-// TODO: Hotkey to restart
-// TODO: Hotkey to show next notification
-// TODO: Hotkey to clear all notifications
-// TODO: Refactor animation stuff
-// TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to
-// multiples of 15.6ms)
-// TODO: Integrate volume ducking?
-// https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
-// TODO: Auto-detect headset being turned on/off
-// TODO: Test with mutliple users. Might need use Local\ namespace for the event
-
 static const c16* PIGEON_GUID = L"{C1FA11EF-FC16-46DF-A268-104F59E94672}";
 static const c16* SINGLE_INSTANCE_MUTEX_NAME = L"Pigeon Single Instance Mutex";
-static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process Name";
+static const c16* NEW_PROCESS_MESSAGE_NAME = L"Pigeon New Process";
 
 enum struct InitPhase
 {
@@ -96,15 +70,17 @@ enum struct InitPhase
 
 struct Hotkey
 {
+	using HotKeyFn = b32(NotificationState*);
+
 	u32 modifier;
 	u32 key;
-	b32 (*execute)(NotificationState*);
+	HotKeyFn* execute;
 
 	i32 id;
 	b32 registered;
 };
 
-b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8, HANDLE&);
+b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8);
 
 b32
 Initialize(
@@ -165,6 +141,9 @@ Initialize(
 		//   older process acquires the mutex from an even older process it will hang (until a new
 		//   message is posted)
 
+		// NOTE: This isn't necessarily going to work across versions if the single instance logic
+		// changes. That's ok though since it's primarily a dev feature.
+
 		HANDLE hProcess = GetCurrentProcess();
 
 		FILETIME win32_startFileTime = {};
@@ -199,7 +178,10 @@ Initialize(
 			{
 				NotifyWindowsError(state, Severity::Error, L"WaitForSingleObject WAIT_FAILED");
 
+				b32 success = ReleaseMutex(singleInstanceMutex);
+				WINDOWS_WARN_IF(!success, return false, L"ReleaseMutex failed");
 				singleInstanceMutex = nullptr;
+
 				return false;
 			}
 			if (uResult == WAIT_ABANDONED)
@@ -221,7 +203,7 @@ Initialize(
 			{
 				NotifyWindowsError(state, Severity::Error, L"RegisterHotKey failed");
 
-				success = UnregisterHotkeys(state, hotkeys, hotkeyCount, singleInstanceMutex);
+				success = UnregisterHotkeys(state, hotkeys, hotkeyCount);
 				if (!success)
 					phase = InitPhase::HotkeysRegistered;
 				return false;
@@ -284,6 +266,29 @@ Initialize(
 }
 
 b32
+UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount)
+{
+	b32 unregisterFailed = false;
+	for (u8 i = 0; i < hotkeyCount; i++)
+	{
+		if (hotkeys[i].registered)
+		{
+			b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
+			if (!success)
+			{
+				unregisterFailed = true;
+				continue;
+			}
+
+			hotkeys[i].registered = false;
+		}
+	}
+	WINDOWS_WARN_IF(unregisterFailed, return false, L"UnregisterHotKey failed");
+
+	return true;
+};
+
+b32
 OpenLogFile(NotificationState* state)
 {
 	WARN_IF(!state->logFilePath[0], return false, L"No log file")
@@ -300,37 +305,6 @@ OpenLogFile(NotificationState* state)
 
 	return true;
 }
-
-b32
-UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount, HANDLE& singleInstanceMutex)
-{
-	b32 unregisterFailed = false;
-	for (u8 i = 0; i < hotkeyCount; i++)
-	{
-		if (hotkeys[i].registered)
-		{
-			b32 success = UnregisterHotKey(nullptr, hotkeys[i].id);
-			if (!success)
-			{
-				NotifyWindowsError(state, Severity::Warning, L"UnregisterHotKey failed");
-
-				unregisterFailed = true;
-				continue;
-			}
-
-			hotkeys[i].registered = false;
-		}
-	}
-	if (unregisterFailed) return false;
-
-
-	b32 success = ReleaseMutex(singleInstanceMutex);
-	WINDOWS_WARN_IF(!success, return false, L"ReleaseMutex failed");
-
-	singleInstanceMutex = nullptr;
-
-	return true;
-};
 
 b32
 RunCommand(NotificationState* state, c8* command)
@@ -451,7 +425,17 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 				{
 					if (singleInstanceMutex)
 					{
-						UnregisterHotkeys(state, hotkeys, ArrayCount(hotkeys), singleInstanceMutex);
+						b32 success = true;
+						success &= UnregisterHotkeys(state, hotkeys, ArrayCount(hotkeys));
+						success &= CloseHandle(logFile);
+
+						// If we can't release resources the new instance needs hold the mutex until the process exits
+						if (success)
+						{
+							success = ReleaseMutex(singleInstanceMutex);
+							WINDOWS_WARN_IF(!success, NOTHING, L"ReleaseMutex failed");
+							singleInstanceMutex = nullptr;
+						}
 					}
 
 					state->windowPosition.y += state->windowSize.cy + 10;
@@ -547,7 +531,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		{
 			// NOTE: This will block until Ok is clicked, but that's ok because it only happens when
 			// window creation failed and we don't hold the mutex.
-			// TODO: Ocassionally getting this with "There can be only one!" if running a shit ton of
+			// TODO: Occasionally getting this with "There can be only one!" if running a shit ton of
 			// instances
 			i32 iResult = MessageBoxW(nullptr, note.text, L"Pigeon Error", MB_OK | MB_ICONERROR | MB_SERVICE_NOTIFICATION);
 			if (iResult == 0) {} // TODO: Uh, system log?

@@ -1,3 +1,5 @@
+Create log after enforcing single instance
+	Causes the new process to not have a log
 Improve device name handling
 Better multi-monitor handling
 	Show on all desktops?
@@ -21,3 +23,22 @@ Change the queue behavior
 	Different channels use different windows
 	Same channel reuses same window
 	Colored bar for queued messages?
+
+TODO: Would it be better to refactor the Notify process to be able to reserve the next spot, fill the buffer, then process the notification?
+TODO: Show warning, show another warning while first is hiding => shows 2 warnings (repeating the first?)
+TODO: Look for a way to start faster at login (using Startup folder seems to take quite a few seconds)
+TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
+TODO: SetProcessDPIAware?
+TODO: Minimize the number of link dependencies
+TODO: Pigeon image on startup
+TODO: Pigeon SFX
+TODO: Line on notification indicating queue count (colored if warning/error exists?)
+TODO: Hotkey to restart
+TODO: Hotkey to show next notification
+TODO: Hotkey to clear all notifications
+TODO: Refactor animation stuff
+TODO: Use a different animation timing method. SetTimer is not precise enough (rounds to multiples of 15.6ms)
+TODO: Integrate volume ducking?
+	https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
+TODO: Auto-detect headset being turned on/off
+TODO: Test with mutliple users. Might need use Local\ namespace for the event
