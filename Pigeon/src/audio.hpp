@@ -8,6 +8,7 @@
 #include "IPolicyConfig.h"
 
 #define WM_AUDIO_DEVICE_CHANGED WM_USER + 1
+#define WM_AUDIO_DEVICE_CONNECTED WM_USER + 2
 
 enum struct AudioType
 {
@@ -146,8 +147,8 @@ OpenAudioRecordingDevicesWindow(NotificationState* state)
 	return RunCommand(state, command);
 }
 
-void
-ShowAudioDeviceNotification(NotificationState* state, AudioType audioType)
+b32
+GetDeviceName(NotificationState* state, CComPtr<IMMDevice>& device, PROPVARIANT& deviceDescription)
 {
 	const wchar_t* genericNames[] = {
 		L"Speaker",
@@ -157,6 +158,71 @@ ShowAudioDeviceNotification(NotificationState* state, AudioType audioType)
 		L"Microphone",
 	};
 
+	CComPtr<IPropertyStore> propertyStore;
+	HRESULT hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
+	WARN_IF_FAILED(hr, return false, L"OpenPropertyStore failed");
+
+	PropVariantInit(&deviceDescription);
+
+	hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
+	WARN_IF_FAILED(hr, return false, L"GetValue failed");
+
+	for (const c16* genericName : genericNames)
+	{
+		if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
+		{
+			hr = PropVariantClear(&deviceDescription);
+			WARN_IF_FAILED(hr, return false, L"PropVariantClear failed");
+
+			PropVariantInit(&deviceDescription);
+
+			hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
+			WARN_IF_FAILED(hr, return false, L"GetValue failed");
+
+			break;
+		}
+	}
+
+	return true;
+}
+
+b32
+ReleaseDeviceName(NotificationState* state, PROPVARIANT& deviceDescription)
+{
+	HRESULT hr = PropVariantClear(&deviceDescription);
+	WARN_IF_FAILED(hr, return false, L"PropVariantClear failed");
+
+	return true;
+}
+
+void
+ShowAudioDeviceConnected(NotificationState* state, c16* deviceID)
+{
+	defer { delete[] deviceID; };
+
+	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
+	HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+	WARN_IF_FAILED(hr, return, L"CoCreateInstance failed");
+
+	CComPtr<IMMDevice> device;
+	hr = deviceEnumerator->GetDevice(deviceID, &device);
+	WARN_IF_FAILED(hr, return, L"GetDevice failed");
+
+	PROPVARIANT deviceDescription;
+	b32 success = GetDeviceName(state, device, deviceDescription);
+	if (!success) return;
+
+	c16 message[256];
+	swprintf(message, ArrayCount(message), L"%s\nConnected", deviceDescription.pwszVal);
+	Notify(state, Severity::Info, message);
+
+	success = ReleaseDeviceName(state, deviceDescription);
+	if (!success) return;
+}
+
+void
+ShowAudioDeviceDefaultChanged(NotificationState* state, AudioType audioType)
+{
 	EDataFlow dataFlow = (EDataFlow) -1;
 	switch (audioType)
 	{
@@ -169,48 +235,18 @@ ShowAudioDeviceNotification(NotificationState* state, AudioType audioType)
 	HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
 	WARN_IF_FAILED(hr, return, L"CoCreateInstance failed");
 
-	CComHeapPtr<c16> currentDefaultDeviceID;
-	CComPtr<IMMDevice> currentDevice;
-	hr = deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eConsole, &currentDevice);
+	CComPtr<IMMDevice> device;
+	hr = deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eConsole, &device);
 	WARN_IF_FAILED(hr, return, L"GetDefaultAudioEndpoint failed");
 
-	hr = currentDevice->GetId(&currentDefaultDeviceID);
-	WARN_IF_FAILED(hr, return, L"GetId failed");
-
-	CComPtr<IMMDevice> device;
-	hr = deviceEnumerator->GetDevice(currentDefaultDeviceID, &device);
-	WARN_IF_FAILED(hr, return, L"GetDevice failed");
-
-	CComPtr<IPropertyStore> propertyStore;
-	hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
-	WARN_IF_FAILED(hr, return, L"OpenPropertyStore failed");
-
 	PROPVARIANT deviceDescription;
-	PropVariantInit(&deviceDescription);
-
-	hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
-	WARN_IF_FAILED(hr, return, L"GetValue failed");
-
-	for (const c16* genericName : genericNames)
-	{
-		if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
-		{
-			hr = PropVariantClear(&deviceDescription);
-			WARN_IF_FAILED(hr, return, L"PropVariantClear failed");
-
-			PropVariantInit(&deviceDescription);
-
-			hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
-			WARN_IF_FAILED(hr, return, L"GetValue failed");
-
-			break;
-		}
-	}
+	b32 success = GetDeviceName(state, device, deviceDescription);
+	if (!success) return;
 
 	Notify(state, Severity::Info, deviceDescription.pwszVal);
 
-	hr = PropVariantClear(&deviceDescription);
-	WARN_IF_FAILED(hr, return, L"PropVariantClear failed");
+	success = ReleaseDeviceName(state, deviceDescription);
+	if (!success) return;
 }
 
 struct ProcessInfo
@@ -580,11 +616,32 @@ struct AudioNotificationClient : public IMMNotificationClient
 		return E_NOINTERFACE;
 	}
 
-	HRESULT OnDeviceStateChanged(LPCWSTR pwstrDeviceId, DWORD dwNewState) override { return S_OK; }
-	HRESULT OnDeviceAdded(LPCWSTR pwstrDeviceId) override { return S_OK; }
-	HRESULT OnDeviceRemoved(LPCWSTR pwstrDeviceId) override { return S_OK; }
+	HRESULT OnDeviceStateChanged(LPCWSTR deviceID, DWORD dwNewState) override
+	{
+		switch (dwNewState)
+		{
+			case DEVICE_STATE_ACTIVE:
+			{
+				i32 len = lstrlenW(deviceID) + 1;
+				c16* deviceIDCopy = new c16[len];
+				wcscpy_s(deviceIDCopy, len, deviceID);
 
-	HRESULT OnDefaultDeviceChanged(EDataFlow dataFlow, ERole role, LPCWSTR newDefaultDeviceID) override
+				PostMessageW(state->hwnd, WM_AUDIO_DEVICE_CONNECTED, 0, (LPARAM) deviceIDCopy);
+				break;
+			}
+
+			case DEVICE_STATE_DISABLED:
+			case DEVICE_STATE_NOTPRESENT:
+			case DEVICE_STATE_UNPLUGGED:
+				break;
+		}
+		return S_OK;
+	}
+
+	HRESULT OnDeviceAdded(LPCWSTR deviceID) override { return S_OK; }
+	HRESULT OnDeviceRemoved(LPCWSTR deviceID) override { return S_OK; }
+
+	HRESULT OnDefaultDeviceChanged(EDataFlow dataFlow, ERole role, LPCWSTR deviceID) override
 	{
 		// NOTE: This is called from another thread (but not during the message loop)
 		switch (dataFlow)
@@ -610,5 +667,5 @@ struct AudioNotificationClient : public IMMNotificationClient
 		return S_OK;
 	}
 
-	HRESULT OnPropertyValueChanged(LPCWSTR pwstrDeviceId, const PROPERTYKEY key) override { return S_OK; }
+	HRESULT OnPropertyValueChanged(LPCWSTR deviceID, const PROPERTYKEY key) override { return S_OK; }
 };

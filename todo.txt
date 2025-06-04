@@ -5,7 +5,6 @@ Better multi-monitor handling
 	Show on all desktops?
 	Show on current desktop?
 Sometimes prevents shutdown
-Bluetooth device connection/disconnection
 Change the queue behavior
 	Multiple windows?
 	String key for each "channel"

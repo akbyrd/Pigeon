@@ -326,16 +326,30 @@ ProcessNotificationQueue(NotificationState* state)
 	WINDOWS_WARN_IF(previousColor == CLR_INVALID, return false, L"SetTextColor failed");
 
 	RECT textRect = {};
+	u32 flags = DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS;
+	iResult = DrawTextW(
+		state->bitmapDC,
+		notification->text, -1,
+		&textRect,
+		flags | DT_CALCRECT
+	);
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
+
+	i32 height = textRect.bottom - textRect.top;
+	i32 maxHeight = state->windowSize.cy;
+	if (height > maxHeight)
+		height = maxHeight;
+
 	textRect.left = state->textPadding;
-	textRect.top = 0;
+	textRect.top = (maxHeight - height) / 2;
 	textRect.right = state->windowSize.cx - state->textPadding;
-	textRect.bottom = state->windowSize.cy;
+	textRect.bottom = state->windowSize.cy - (maxHeight - height) / 2;
 
 	iResult = DrawTextW(
 		state->bitmapDC,
 		notification->text, -1,
 		&textRect,
-		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS
+		flags
 	);
 	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
 

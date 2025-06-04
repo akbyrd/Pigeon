@@ -472,8 +472,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						returnValue = (i32) msg.wParam;
 						break;
 
+					case WM_AUDIO_DEVICE_CONNECTED:
+						ShowAudioDeviceConnected(state, (c16*) msg.lParam);
+						break;
+
 					case WM_AUDIO_DEVICE_CHANGED:
-						ShowAudioDeviceNotification(state, (AudioType) msg.lParam);
+						ShowAudioDeviceDefaultChanged(state, (AudioType) msg.lParam);
 						break;
 
 					// Expected messages
