@@ -674,6 +674,7 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 							}
 							else
 							{
+								// TODO: This gets hit when debugging. Something to do with the time elapsing multiple times while still hidden.
 								Assert(state->queueCount == 1);
 							}
 

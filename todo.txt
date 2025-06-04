@@ -5,18 +5,7 @@ Better multi-monitor handling
 	Show on all desktops?
 	Show on current desktop?
 Sometimes prevents shutdown
-Handle messages:
-	WM_SYSCOLORCHAGED (created a vsix project)
-	UNKNOWN (0x100), w:0x11
-	UNKNOWN (0x100), w:0x5B
-	UNKNOWN (0x101), w:0x11
-	UNKNOWN (0x101), w:0x5B
-	UNKNOWN (0x101), w:0x77
-	UNKNOWN (0x60), w:0x1
-	UNKNOWN (0x60), w:0x0
-	WM_SYSKEYDOWN, w: 0x58
-	WM_SYSKEYDOWN, w: 0x78
-Bluetoother device connection/disconnection
+Bluetooth device connection/disconnection
 Change the queue behavior
 	Multiple windows?
 	String key for each "channel"
@@ -30,8 +19,6 @@ TODO: Look for a way to start faster at login (using Startup folder seems to tak
 TODO: Hotkeys don't work in fullscreen apps (e.g. Darksiders 2)
 TODO: SetProcessDPIAware?
 TODO: Minimize the number of link dependencies
-TODO: Pigeon image on startup
-TODO: Pigeon SFX
 TODO: Line on notification indicating queue count (colored if warning/error exists?)
 TODO: Hotkey to restart
 TODO: Hotkey to show next notification
@@ -41,4 +28,4 @@ TODO: Use a different animation timing method. SetTimer is not precise enough (r
 TODO: Integrate volume ducking?
 	https://msdn.microsoft.com/en-us/library/windows/desktop/dd940522(v=vs.85).aspx
 TODO: Auto-detect headset being turned on/off
-TODO: Test with mutliple users. Might need use Local\ namespace for the event
+TODO: Test with multiple users. Might need use Local\ namespace for the event

@@ -7,6 +7,8 @@
 
 #include "IPolicyConfig.h"
 
+#define WM_AUDIO_DEVICE_CHANGED WM_USER + 1
+
 enum struct AudioType
 {
 	Null,
@@ -89,53 +91,6 @@ CycleAudioDevice(NotificationState* state, AudioType audioType)
 	}
 
 
-	// Notification
-	{
-		const wchar_t* genericNames[] = {
-			L"Speaker",
-			L"Headset",
-			L"Headset Earphone",
-			L"Headphones",
-			L"Microphone",
-		};
-
-		CComPtr<IMMDevice> device;
-		hr = deviceEnumerator->GetDevice(newDefaultDeviceID, &device);
-		WARN_IF_FAILED(hr, return false, L"GetDevice failed");
-
-		CComPtr<IPropertyStore> propertyStore;
-		hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
-		WARN_IF_FAILED(hr, return false, L"OpenPropertyStore failed");
-
-		PROPVARIANT deviceDescription;
-		PropVariantInit(&deviceDescription);
-
-		hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
-		WARN_IF_FAILED(hr, return false, L"GetValue failed");
-
-		for (const c16* genericName : genericNames)
-		{
-			if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
-			{
-				hr = PropVariantClear(&deviceDescription);
-				WARN_IF_FAILED(hr, return false, L"PropVariantClear failed");
-
-				PropVariantInit(&deviceDescription);
-
-				hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
-				WARN_IF_FAILED(hr, return false, L"GetValue failed");
-
-				break;
-			}
-		}
-
-		Notify(state, Severity::Info, deviceDescription.pwszVal);
-
-		hr = PropVariantClear(&deviceDescription);
-		WARN_IF_FAILED(hr, return false, L"PropVariantClear failed");
-	}
-
-
 	// Set next audio device
 	{
 		CComPtr<IPolicyConfig> policyConfig;
@@ -145,8 +100,9 @@ CycleAudioDevice(NotificationState* state, AudioType audioType)
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eConsole);
 		WARN_IF_FAILED(hr, return false, L"SetDefaultEndpoint failed");
 
-		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
-		WARN_IF_FAILED(hr, return false, L"SetDefaultEndpoint failed");
+		// NOTE: Console and multimedia are tied together. Setting both leads to "duplicate" notifications
+		//hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eMultimedia);
+		//WARN_IF_FAILED(hr, return false, L"SetDefaultEndpoint failed");
 
 		hr = policyConfig->SetDefaultEndpoint(newDefaultDeviceID, ERole::eCommunications);
 		WARN_IF_FAILED(hr, return false, L"SetDefaultEndpoint failed");
@@ -188,6 +144,73 @@ OpenAudioRecordingDevicesWindow(NotificationState* state)
 {
 	c8 command[] = "control.exe /name Microsoft.Sound /page Recording";
 	return RunCommand(state, command);
+}
+
+void
+ShowAudioDeviceNotification(NotificationState* state, AudioType audioType)
+{
+	const wchar_t* genericNames[] = {
+		L"Speaker",
+		L"Headset",
+		L"Headset Earphone",
+		L"Headphones",
+		L"Microphone",
+	};
+
+	EDataFlow dataFlow = (EDataFlow) -1;
+	switch (audioType)
+	{
+		default: Assert(false); break;
+		case AudioType::Playback:  dataFlow = EDataFlow::eRender;  break;
+		case AudioType::Recording: dataFlow = EDataFlow::eCapture; break;
+	}
+
+	CComPtr<IMMDeviceEnumerator> deviceEnumerator;
+	HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&deviceEnumerator));
+	WARN_IF_FAILED(hr, return, L"CoCreateInstance failed");
+
+	CComHeapPtr<c16> currentDefaultDeviceID;
+	CComPtr<IMMDevice> currentDevice;
+	hr = deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eConsole, &currentDevice);
+	WARN_IF_FAILED(hr, return, L"GetDefaultAudioEndpoint failed");
+
+	hr = currentDevice->GetId(&currentDefaultDeviceID);
+	WARN_IF_FAILED(hr, return, L"GetId failed");
+
+	CComPtr<IMMDevice> device;
+	hr = deviceEnumerator->GetDevice(currentDefaultDeviceID, &device);
+	WARN_IF_FAILED(hr, return, L"GetDevice failed");
+
+	CComPtr<IPropertyStore> propertyStore;
+	hr = device->OpenPropertyStore(STGM_READ, &propertyStore);
+	WARN_IF_FAILED(hr, return, L"OpenPropertyStore failed");
+
+	PROPVARIANT deviceDescription;
+	PropVariantInit(&deviceDescription);
+
+	hr = propertyStore->GetValue(PKEY_Device_DeviceDesc, &deviceDescription);
+	WARN_IF_FAILED(hr, return, L"GetValue failed");
+
+	for (const c16* genericName : genericNames)
+	{
+		if (wcscmp(genericName, deviceDescription.pwszVal) == 0)
+		{
+			hr = PropVariantClear(&deviceDescription);
+			WARN_IF_FAILED(hr, return, L"PropVariantClear failed");
+
+			PropVariantInit(&deviceDescription);
+
+			hr = propertyStore->GetValue(PKEY_DeviceInterface_FriendlyName, &deviceDescription);
+			WARN_IF_FAILED(hr, return, L"GetValue failed");
+
+			break;
+		}
+	}
+
+	Notify(state, Severity::Info, deviceDescription.pwszVal);
+
+	hr = PropVariantClear(&deviceDescription);
+	WARN_IF_FAILED(hr, return, L"PropVariantClear failed");
 }
 
 struct ProcessInfo
@@ -525,3 +548,67 @@ OpenVolumeMixerWindow(NotificationState* state)
 	snprintf(command, ArrayCount(command), "SndVol.exe -m %i", coords);
 	return RunCommand(state, command);
 }
+
+struct AudioNotificationClient : public IMMNotificationClient
+{
+	u32 refs = 1;
+	NotificationState* state;
+
+	AudioNotificationClient(NotificationState* state) : state(state) {}
+
+	ULONG AddRef() { return InterlockedIncrement(&refs); }
+
+	ULONG Release()
+	{
+		u32 refs2 = InterlockedDecrement(&refs);
+		if (refs2 == 0) delete this;
+		return refs2;
+	}
+
+	HRESULT QueryInterface(REFIID riid, void** ppv)
+	{
+		if (!ppv) return E_INVALIDARG;
+
+		if (riid == __uuidof(IUnknown) || riid == __uuidof(IMMNotificationClient))
+		{
+			*ppv = this;
+			AddRef();
+			return S_OK;
+		}
+
+		ppv = nullptr;
+		return E_NOINTERFACE;
+	}
+
+	HRESULT OnDeviceStateChanged(LPCWSTR pwstrDeviceId, DWORD dwNewState) override { return S_OK; }
+	HRESULT OnDeviceAdded(LPCWSTR pwstrDeviceId) override { return S_OK; }
+	HRESULT OnDeviceRemoved(LPCWSTR pwstrDeviceId) override { return S_OK; }
+
+	HRESULT OnDefaultDeviceChanged(EDataFlow dataFlow, ERole role, LPCWSTR newDefaultDeviceID) override
+	{
+		// NOTE: This is called from another thread (but not during the message loop)
+		switch (dataFlow)
+		{
+			case EDataFlow::eRender:
+			{
+				PostMessageW(state->hwnd, WM_AUDIO_DEVICE_CHANGED, 0, (LPARAM) AudioType::Playback);
+				return S_OK;
+			}
+
+			case EDataFlow::eCapture:
+			{
+				PostMessageW(state->hwnd, WM_AUDIO_DEVICE_CHANGED, 0, (LPARAM) AudioType::Recording);
+				return S_OK;
+			}
+
+			case EDataFlow::eAll:
+			case EDataFlow::EDataFlow_enum_count:
+				break;
+		}
+
+		WARN_IF(true, IGNORE, L"Unrecognized EDataFlow %d", dataFlow);
+		return S_OK;
+	}
+
+	HRESULT OnPropertyValueChanged(LPCWSTR pwstrDeviceId, const PROPERTYKEY key) override { return S_OK; }
+};

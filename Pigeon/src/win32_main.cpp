@@ -64,7 +64,8 @@ enum struct InitPhase
 	WindowCreated,
 	SingleInstanceEnforced,
 	HotkeysRegistered,
-	SystemsInitialized,
+	COMInitialized,
+	AudioInitialized,
 	LogFileCreated,
 };
 
@@ -80,21 +81,25 @@ struct Hotkey
 	b32 registered;
 };
 
+struct ApplicationState
+{
+	InitPhase                phase               = InitPhase::None;
+	u64                      startTime           = 0;
+	u32                      processID           = 0;
+	u32                      WM_NEWINSTANCE      = 0;
+	HANDLE                   singleInstanceMutex = nullptr;
+	HANDLE                   logFile             = nullptr;
+	AudioNotificationClient* audioClient         = nullptr;
+	NotificationState        notification        = {};
+};
+
 b32 UnregisterHotkeys(NotificationState*, Hotkey*, u8);
 
 b32
-Initialize(
-	InitPhase& phase,
-	NotificationState* state,
-	HINSTANCE hInstance,
-	u64& startTime,
-	u32& processID,
-	u32& WM_NEWINSTANCE,
-	HANDLE& singleInstanceMutex,
-	Hotkey* hotkeys,
-	u8 hotkeyCount,
-	HANDLE& logFile)
+Initialize(ApplicationState& app, HINSTANCE hInstance, Hotkey* hotkeys, u8 hotkeyCount)
 {
+	NotificationState* state = &app.notification;
+
 	// Create window
 	{
 		WNDCLASSW windowClass = {};
@@ -117,10 +122,10 @@ Initialize(
 			windowClass.lpszClassName,
 			L"Pigeon Notification Window",
 			WS_POPUP,
-			state->windowPosition.x,
-			state->windowPosition.y,
-			state->windowSize.cx,
-			state->windowSize.cy,
+			app.notification.windowPosition.x,
+			app.notification.windowPosition.y,
+			app.notification.windowSize.cx,
+			app.notification.windowSize.cy,
 			nullptr,
 			nullptr,
 			hInstance,
@@ -129,7 +134,7 @@ Initialize(
 		ERROR_IF_INVALID_HANDLE(hwnd, return false, L"CreateWindowExW failed");
 
 		state->hwnd = hwnd;
-		phase = InitPhase::WindowCreated;
+		app.phase = InitPhase::WindowCreated;
 	}
 
 
@@ -147,40 +152,39 @@ Initialize(
 		HANDLE hProcess = GetCurrentProcess();
 
 		FILETIME win32_startFileTime = {};
-		FILETIME unusued;
-		b32 success = GetProcessTimes(hProcess, &win32_startFileTime, &unusued, &unusued, &unusued);
+		FILETIME unused;
+		b32 success = GetProcessTimes(hProcess, &win32_startFileTime, &unused, &unused, &unused);
 		WINDOWS_ERROR_IF(!success, return false, L"GetProcessTimes failed");
 
 		ULARGE_INTEGER win32_startTime = {};
 		win32_startTime.LowPart  = win32_startFileTime.dwLowDateTime;
 		win32_startTime.HighPart = win32_startFileTime.dwHighDateTime;
 
-		startTime = win32_startTime.QuadPart;
+		app.startTime = win32_startTime.QuadPart;
+		app.processID = GetProcessId(hProcess);
 
-		processID = GetProcessId(hProcess);
-
-		WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
-		WINDOWS_ERROR_IF(!WM_NEWINSTANCE, return false, L"RegisterWindowMessage failed");
+		app.WM_NEWINSTANCE = RegisterWindowMessageW(NEW_PROCESS_MESSAGE_NAME);
+		WINDOWS_ERROR_IF(!app.WM_NEWINSTANCE, return false, L"RegisterWindowMessage failed");
 
 		// TODO: Namespace?
-		singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
-		WINDOWS_ERROR_IF(!singleInstanceMutex, return false, L"CreateMutex failed");
+		app.singleInstanceMutex = CreateMutexW(nullptr, true, SINGLE_INSTANCE_MUTEX_NAME);
+		WINDOWS_ERROR_IF(!app.singleInstanceMutex, return false, L"CreateMutex failed");
 
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			// TODO: Better to enumerate processes instead of broadcasting
-			success = PostMessageW(HWND_BROADCAST, WM_NEWINSTANCE, startTime, processID);
+			success = PostMessageW(HWND_BROADCAST, app.WM_NEWINSTANCE, app.startTime, app.processID);
 			WINDOWS_ERROR_IF(!success, return false, L"PostMessage failed");
 
 			// TODO: Not handling messages while waiting
-			u32 uResult = WaitForSingleObject(singleInstanceMutex, INFINITE);
+			u32 uResult = WaitForSingleObject(app.singleInstanceMutex, INFINITE);
 			if (uResult == WAIT_FAILED)
 			{
 				NotifyWindowsError(state, Severity::Error, L"WaitForSingleObject WAIT_FAILED");
 
-				b32 success = ReleaseMutex(singleInstanceMutex);
+				b32 success = ReleaseMutex(app.singleInstanceMutex);
 				WINDOWS_WARN_IF(!success, return false, L"ReleaseMutex failed");
-				singleInstanceMutex = nullptr;
+				app.singleInstanceMutex = nullptr;
 
 				return false;
 			}
@@ -190,7 +194,7 @@ Initialize(
 			}
 		}
 
-		phase = InitPhase::SingleInstanceEnforced;
+		app.phase = InitPhase::SingleInstanceEnforced;
 	}
 
 
@@ -205,23 +209,37 @@ Initialize(
 
 				success = UnregisterHotkeys(state, hotkeys, hotkeyCount);
 				if (!success)
-					phase = InitPhase::HotkeysRegistered;
+					app.phase = InitPhase::HotkeysRegistered;
 				return false;
 			}
 
 			hotkeys[i].registered = true;
 		}
 
-		phase = InitPhase::HotkeysRegistered;
+		app.phase = InitPhase::HotkeysRegistered;
 	}
 
 
-	// Initialize systems
+	// Initialize COM
 	{
 		HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_SPEED_OVER_MEMORY | COINIT_DISABLE_OLE1DDE);
 		ERROR_IF_FAILED(hr, return false, L"CoInitializeEx failed");
 
-		phase = InitPhase::SystemsInitialized;
+		app.phase = InitPhase::COMInitialized;
+	}
+
+
+	// Initialize audio
+	{
+		CComPtr<IMMDeviceEnumerator> devEnum;
+		HRESULT hr = CoCreateInstance(_uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&devEnum));
+		ERROR_IF_FAILED(hr, return false, L"Creating MMDeviceEnumerator failed");
+
+		app.audioClient = new AudioNotificationClient(state);
+		hr = devEnum->RegisterEndpointNotificationCallback(app.audioClient);
+		ERROR_IF_FAILED(hr, return false, L"Registering audio client failed");
+
+		app.phase = InitPhase::AudioInitialized;
 	}
 
 
@@ -238,7 +256,7 @@ Initialize(
 
 		wcscat_s(state->logFilePath, ArrayCount(state->logFilePath), L"\\pigeon.log");
 
-		logFile = CreateFileW(
+		app.logFile = CreateFileW(
 			state->logFilePath,
 			GENERIC_WRITE,
 			// TODO: Test write and delete while file is open
@@ -250,7 +268,7 @@ Initialize(
 			FILE_ATTRIBUTE_NORMAL,
 			nullptr
 		);
-		if (logFile == INVALID_HANDLE_VALUE)
+		if (app.logFile == INVALID_HANDLE_VALUE)
 		{
 			NotifyWindowsError(state, Severity::Warning, L"CreateFile failed");
 
@@ -258,7 +276,7 @@ Initialize(
 			return false;
 		}
 
-		phase = InitPhase::LogFileCreated;
+		app.phase = InitPhase::LogFileCreated;
 	}
 
 
@@ -319,8 +337,8 @@ RunCommand(NotificationState* state, c8* command)
 i32 CALLBACK
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdShow)
 {
-	NotificationState notificationState = {};
-	NotificationState* state = &notificationState;
+	ApplicationState app = {};
+	NotificationState* state = &app.notification;
 
 	{
 		// NOTE: QPC and QPF are documented as not being able to fail on XP+
@@ -375,19 +393,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Initialize
-	InitPhase phase = InitPhase::None;
-
-	u64    startTime           = 0;
-	u32    processID           = 0;
-	u32    WM_NEWINSTANCE      = 0;
-	HANDLE singleInstanceMutex = nullptr;
-	HANDLE logFile             = nullptr;
-
-	Initialize(phase,
-		state, hInstance,
-		startTime, processID, WM_NEWINSTANCE, singleInstanceMutex,
-		hotkeys, ArrayCount(hotkeys), logFile
-	);
+	Initialize(app, hInstance, hotkeys, ArrayCount(hotkeys));
 
 
 	// Misc
@@ -397,7 +403,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 	// Message loop
 	i32 returnValue = -1;
-	if (phase >= InitPhase::WindowCreated)
+	if (app.phase >= InitPhase::WindowCreated)
 	{
 		MSG msg = {};
 		b32 quit = false;
@@ -415,26 +421,26 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 			// the todo list
 			//NotifyFormat(state, Severity::Warning, L"Ima overflowin' ur bufferz");
 
-			if (msg.message == WM_NEWINSTANCE)
+			if (msg.message == app.WM_NEWINSTANCE)
 			{
 				u64 newProcessStartTime = msg.wParam;
 				u32 newProcessID        = (u32) msg.lParam;
 
-				if (newProcessStartTime > startTime
-				 || (newProcessStartTime == startTime && newProcessID > processID))
+				if (newProcessStartTime > app.startTime
+				 || (newProcessStartTime == app.startTime && newProcessID > app.processID))
 				{
-					if (singleInstanceMutex)
+					if (app.singleInstanceMutex)
 					{
 						b32 success = true;
 						success &= UnregisterHotkeys(state, hotkeys, ArrayCount(hotkeys));
-						success &= CloseHandle(logFile);
+						success &= CloseHandle(app.logFile);
 
 						// If we can't release resources the new instance needs hold the mutex until the process exits
 						if (success)
 						{
-							success = ReleaseMutex(singleInstanceMutex);
+							success = ReleaseMutex(app.singleInstanceMutex);
 							WINDOWS_WARN_IF(!success, NOTHING, L"ReleaseMutex failed");
-							singleInstanceMutex = nullptr;
+							app.singleInstanceMutex = nullptr;
 						}
 					}
 
@@ -466,6 +472,10 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 						returnValue = (i32) msg.wParam;
 						break;
 
+					case WM_AUDIO_DEVICE_CHANGED:
+						ShowAudioDeviceNotification(state, (AudioType) msg.lParam);
+						break;
+
 					// Expected messages
 					case WM_TIMER:
 					case WM_TIMECHANGE:
@@ -474,14 +484,14 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 					case WM_TABLET_DELETED:
 					case WM_FONTCHANGE:
 					case WM_DWMCOLORIZATIONCOLORCHANGED:
-					// Undocumented, happens when toggling high contrast mode. Closest to WM_THEMECHANGED (0x31A)
-					case 0x31B:
+					case 0x60:  // Undocumented, happens when hitting a breakpoint and continuing. Something to do with focus
+					case 0x31B: // Undocumented, happens when toggling high contrast mode. Closest to WM_THEMECHANGED (0x31A)
 						break;
 
 					// NOTE: Use msg.message,wm in the Watch window to see the message name!
 					default:
 					{
-						if (msg.message < WM_PROCESSQUEUE)
+						if (msg.message < WM_USER)
 						{
 							c16* messageName = GetWindowMessageName(msg.message);
 							if (!messageName)
@@ -501,7 +511,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 							// NOTE: This still succeeds if the file is deleted. Strange.
 							i32 logBytes = logLen * sizeof(log[0]);
-							b32 result = WriteFile(logFile, log, logBytes, nullptr, nullptr);
+							b32 result = WriteFile(app.logFile, log, logBytes, nullptr, nullptr);
 							WARN_IF(!result, NOTHING, L"Log write failed")
 						}
 						break;
@@ -513,13 +523,32 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 
 	// Cleanup
-	if (phase >= InitPhase::LogFileCreated)
-		CloseHandle(logFile);
+	if (app.phase >= InitPhase::LogFileCreated)
+		CloseHandle(app.logFile);
 
-	if (phase >= InitPhase::SystemsInitialized)
+	if (app.phase >= InitPhase::AudioInitialized)
+	{
+		CComPtr<IMMDeviceEnumerator> devEnum;
+		HRESULT hr = CoCreateInstance(_uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&devEnum));
+		ERROR_IF_FAILED(hr, return false, L"CoCreateInstance failed");
+
+		hr = devEnum->UnregisterEndpointNotificationCallback(app.audioClient);
+		ERROR_IF_FAILED(hr, return false, L"UnregisterEndpointNotificationCallback failed");
+	}
+
+	if (app.audioClient)
+	{
+		u32 refs = app.audioClient->Release();
+		WARN_IF(refs > 0, NOTHING, L"Something is still referencing the audio client")
+		app.audioClient = nullptr;
+	}
+
+	if (app.phase >= InitPhase::COMInitialized)
+	{
 		// TODO: This can enter a modal loop and dispatch messages. Understand the implications of
 		// this.
 		CoUninitialize();
+	}
 
 	// Show remaining errors
 	for (u8 i = 0; i < state->queueCount; i++)
