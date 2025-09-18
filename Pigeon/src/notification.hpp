@@ -283,7 +283,7 @@ ProcessNotificationQueue(NotificationState* state)
 		&textSizeRect,
 		DT_CALCRECT | DT_SINGLELINE
 	);
-	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
 
 	i32 textWidth = textSizeRect.right - textSizeRect.left;
 
@@ -333,7 +333,7 @@ ProcessNotificationQueue(NotificationState* state)
 		&textRect,
 		flags | DT_CALCRECT
 	);
-	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
 
 	i32 height = textRect.bottom - textRect.top;
 	i32 maxHeight = state->windowSize.cy;
@@ -351,7 +351,7 @@ ProcessNotificationQueue(NotificationState* state)
 		&textRect,
 		flags
 	);
-	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult)
+	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
 
 
 	// TODO: Only do text rect
@@ -478,10 +478,10 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			bitmapInfo.bmiColors[0]              = {};
 
 			HDC screenDC = GetDC(nullptr);
-			WARN_IF(!screenDC, return -1, L"GetDC failed")
+			WARN_IF(!screenDC, return -1, L"GetDC failed");
 
 			state->bitmapDC = CreateCompatibleDC(screenDC);
-			WARN_IF(!state->bitmapDC, return -1, L"CreateCompatibleDC failed")
+			WARN_IF(!state->bitmapDC, return -1, L"CreateCompatibleDC failed");
 
 			state->bitmap = CreateDIBSection(
 				state->bitmapDC,
@@ -491,16 +491,16 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				nullptr,
 				0
 			);
-			WARN_IF(!state->pixels, return -1, L"CreateDIBSection failed")
+			WARN_IF(!state->pixels, return -1, L"CreateDIBSection failed");
 
 			i32 iResult = ReleaseDC(nullptr, screenDC);
-			WARN_IF(iResult == 0, return -1, L"ReleaseDC failed")
+			WARN_IF(iResult == 0, return -1, L"ReleaseDC failed");
 
 			b32 success = GdiFlush();
-			WARN_IF(!success, return -1, L"GdiFlush failed")
+			WARN_IF(!success, return -1, L"GdiFlush failed");
 
 			state->previousBitmap = (HBITMAP) SelectObject(state->bitmapDC, state->bitmap);
-			WARN_IF(!state->previousBitmap, return -1, L"SelectObject failed")
+			WARN_IF(!state->previousBitmap, return -1, L"SelectObject failed");
 
 
 			// Font
@@ -511,13 +511,13 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			WINDOWS_WARN_IF(!success, return -1, L"SystemParametersInfo failed");
 
 			state->font = CreateFontIndirectW(&nonClientMetrics.lfMessageFont);
-			WARN_IF(!state->font, return -1, L"CreateFontIndirect failed")
+			WARN_IF(!state->font, return -1, L"CreateFontIndirect failed");
 
 			state->previousFont = (HFONT) SelectObject(state->bitmapDC, state->font);
-			WARN_IF(!state->previousFont, return -1, L"SelectObject failed")
+			WARN_IF(!state->previousFont, return -1, L"SelectObject failed");
 
 			iResult = SetBkMode(state->bitmapDC, TRANSPARENT);
-			WARN_IF(iResult == 0, return -1, L"SetBkMode failed")
+			WARN_IF(iResult == 0, return -1, L"SetBkMode failed");
 
 			state->isInitialized = true;
 			success = PostMessageW(hwnd, WM_PROCESSQUEUE, 0, 0);
@@ -542,26 +542,26 @@ NotificationWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			HGDIOBJ previousObject;
 			previousObject = SelectObject(state->bitmapDC, state->previousFont);
 			state->previousFont = nullptr;
-			WARN_IF(!previousObject, NOTHING, L"SelectObject failed")
+			WARN_IF(!previousObject, NOTHING, L"SelectObject failed");
 
 			b32 success;
 			success = DeleteObject(state->font);
 			state->font = nullptr;
-			WARN_IF(!success, NOTHING, L"DeleteObject failed")
+			WARN_IF(!success, NOTHING, L"DeleteObject failed");
 
 			// Delete bitmap
 			previousObject = SelectObject(state->bitmapDC, state->previousBitmap);
 			state->previousBitmap = nullptr;
-			WARN_IF(!previousObject, NOTHING, L"SelectObject failed")
+			WARN_IF(!previousObject, NOTHING, L"SelectObject failed");
 
 			success = DeleteObject(state->bitmap);
 			state->bitmap = nullptr;
-			WARN_IF(!success, NOTHING, L"DeleteObject failed")
+			WARN_IF(!success, NOTHING, L"DeleteObject failed");
 
 			// Delete DC
 			success = DeleteDC(state->bitmapDC);
 			state->bitmapDC = nullptr;
-			WARN_IF(!success, NOTHING, L"DeleteDC failed")
+			WARN_IF(!success, NOTHING, L"DeleteDC failed");
 
 			return 0;
 		}

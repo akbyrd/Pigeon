@@ -112,7 +112,7 @@ CycleAudioDevice(NotificationState* state, AudioType audioType)
 		if (audioType == AudioType::Playback)
 		{
 			b32 success = PlaySoundW((c16*) SND_ALIAS_SYSTEMDEFAULT, nullptr, SND_ALIAS_ID | SND_ASYNC | SND_SYSTEM);
-			WARN_IF(!success, return false, L"PlaySound failed")
+			WARN_IF(!success, return false, L"PlaySound failed");
 		}
 	}
 
@@ -269,7 +269,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 	c16 processPath[MAX_PATH];
 	u32 pathLength = ArrayCount(processPath);
 	b32 result = QueryFullProcessImageNameW(processHandle, 0, processPath, (DWORD*) &pathLength);
-	WARN_IF(!result, return, L"QueryFullProcessImageNameW failed")
+	WARN_IF(!result, return, L"QueryFullProcessImageNameW failed");
 
 
 	// Try the FileDescription property of the version info
@@ -314,7 +314,7 @@ GetProcessName(NotificationState* state, HANDLE snapshot, ProcessInfo& process)
 		u32 translationSize;
 		Translation* translations;
 		b32 result = VerQueryValueW(versionInfo, L"\\VarFileInfo\\Translation", (void**) &translations, &translationSize);
-		WARN_IF(!result, break, L"GetFileVersionInfoSizeW failed")
+		WARN_IF(!result, break, L"GetFileVersionInfoSizeW failed");
 
 		i32 translationCount = translationSize / sizeof(Translation);
 		for (i32 i = 0; i < translationCount; i++)
@@ -469,10 +469,10 @@ ToggleMuteForCurrentApplication(NotificationState* state)
 		GUITHREADINFO threadInfo = {};
 		threadInfo.cbSize = sizeof(GUITHREADINFO);
 		b32 result = GetGUIThreadInfo(0, &threadInfo);
-		WARN_IF(!result, return false, L"GetGUIThreadInfo failed")
+		WARN_IF(!result, return false, L"GetGUIThreadInfo failed");
 
 		HWND hwnd = threadInfo.hwndFocus ? threadInfo.hwndFocus : threadInfo.hwndActive;
-		WARN_IF(!hwnd, return false, L"Failed to find focused window")
+		WARN_IF(!hwnd, return false, L"Failed to find focused window");
 		HRESULT hr = GetWindowThreadProcessId(hwnd, (DWORD*) &focusedProcess.id);
 		WARN_IF_FAILED(hr, return false, L"GetWindowThreadProcessId failed");
 

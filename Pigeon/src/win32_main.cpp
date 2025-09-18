@@ -309,7 +309,7 @@ UnregisterHotkeys(NotificationState* state, Hotkey* hotkeys, u8 hotkeyCount)
 b32
 OpenLogFile(NotificationState* state)
 {
-	WARN_IF(!state->logFilePath[0], return false, L"No log file")
+	WARN_IF(!state->logFilePath[0], return false, L"No log file");
 
 	// The return value is treated as an int. It's not a real HINSTANCE
 	HINSTANCE result = ShellExecuteW(
@@ -319,7 +319,7 @@ OpenLogFile(NotificationState* state)
 		nullptr,
 		nullptr,
 		SW_SHOW);
-	WARN_IF((i64) result < 32, return false, L"ShellExecuteW failed")
+	WARN_IF((i64) result < 32, return false, L"ShellExecuteW failed");
 
 	return true;
 }
@@ -329,7 +329,7 @@ RunCommand(NotificationState* state, c8* command)
 {
 	u32 uResult = WinExec(command, SW_NORMAL);
 	// TODO: Can we get an error message from the result value?
-	WARN_IF(uResult < 32, return false, L"WinExec failed: %u", uResult)
+	WARN_IF(uResult < 32, return false, L"WinExec failed: %u", uResult);
 
 	return true;
 }
@@ -511,12 +511,12 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 
 							c16 log[32];
 							i32 logLen = swprintf(log, ArrayCount(log), L"UNKNOWN (0x%1X), w:0x%1llX\n", msg.message, msg.wParam);
-							WARN_IF(logLen < 0, break, L"Log format failed")
+							WARN_IF(logLen < 0, break, L"Log format failed");
 
 							// NOTE: This still succeeds if the file is deleted. Strange.
 							i32 logBytes = logLen * sizeof(log[0]);
 							b32 result = WriteFile(app.logFile, log, logBytes, nullptr, nullptr);
-							WARN_IF(!result, NOTHING, L"Log write failed")
+							WARN_IF(!result, NOTHING, L"Log write failed");
 						}
 						break;
 					}
@@ -543,7 +543,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 	if (app.audioClient)
 	{
 		u32 refs = app.audioClient->Release();
-		WARN_IF(refs > 0, NOTHING, L"Something is still referencing the audio client")
+		WARN_IF(refs > 0, NOTHING, L"Something is still referencing the audio client");
 		app.audioClient = nullptr;
 	}
 
