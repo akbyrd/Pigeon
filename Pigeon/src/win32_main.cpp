@@ -205,15 +205,21 @@ Initialize(ApplicationState& app, HINSTANCE hInstance, Hotkey* hotkeys, u8 hotke
 			b32 success = RegisterHotKey(nullptr, hotkeys[i].id, MOD_WIN | MOD_NOREPEAT | hotkeys[i].modifier, hotkeys[i].key);
 			if (!success)
 			{
-				NotifyWindowsError(state, Severity::Error, L"RegisterHotKey failed");
+				i32 len = 4;
+				c16 buf[32] = { L"Win+" };
+				if (hotkeys[i].modifier)
+				{
+					u32 scanCode = MapVirtualKeyW(hotkeys[i].modifier, MAPVK_VK_TO_VSC_EX);
+					len += GetKeyNameTextW(scanCode << 16, buf + len, ArrayCount(buf) - len);
+					buf[len++] = L'+';
+				}
+				u32 scanCode = MapVirtualKeyW(hotkeys[i].key, MAPVK_VK_TO_VSC_EX);
+				len += GetKeyNameTextW(scanCode << 16, buf + len, ArrayCount(buf) - len);
 
-				success = UnregisterHotkeys(state, hotkeys, hotkeyCount);
-				if (!success)
-					app.phase = InitPhase::HotkeysRegistered;
-				return false;
+				NotifyWindowsErrorFormat(state, Severity::Warning, L"RegisterHotKey failed: %.*s", len, buf);
 			}
 
-			hotkeys[i].registered = true;
+			hotkeys[i].registered = success;
 		}
 
 		app.phase = InitPhase::HotkeysRegistered;
@@ -354,7 +360,7 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, i32 nCmdS
 		state->textColorNormal  = RGB(255, 255, 255);
 		state->textColorError   = RGB(255, 0, 0);
 		state->textColorWarning = RGB(255, 255, 0);
-		state->textPadding      = 20;
+		state->textPadding      = { 20, 6 };
 		state->animShowTicks    = 0.1 * tickFrequency;
 		state->animIdleTicks    = 2.0 * tickFrequency;
 		state->animHideTicks    = 1.0 * tickFrequency;

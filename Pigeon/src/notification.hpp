@@ -46,7 +46,7 @@ struct NotificationState
 	COLORREF     textColorNormal       = {};
 	COLORREF     textColorError        = {};
 	COLORREF     textColorWarning      = {};
-	u8           textPadding           = 0;
+	SIZE         textPadding           = {};
 
 	b32          isInitialized         = false;
 	HWND         hwnd                  = nullptr;
@@ -200,7 +200,7 @@ NotifyWindowsError(NotificationState* state, u32 errorCode, Severity severity, c
 
 	c16 tempBuffer[ArrayCount(Notification::text)] = {};
 	uResult = FormatMessageW(
-		FORMAT_MESSAGE_FROM_SYSTEM,
+		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
 		nullptr,
 		errorCode,
 		0,
@@ -218,7 +218,7 @@ NotifyWindowsError(NotificationState* state, u32 errorCode, Severity severity, c
 		return false;
 	}
 
-	NotifyFormat(state, severity, L"%s - %s", text, tempBuffer);
+	NotifyFormat(state, severity, L"%s\n%s", text, tempBuffer);
 
 	return true;
 }
@@ -227,6 +227,26 @@ inline b32
 NotifyWindowsError(NotificationState* state, Severity severity, c16* text)
 {
 	return NotifyWindowsError(state, GetLastError(), severity, text);
+}
+
+inline void
+NotifyWindowsErrorFormat(NotificationState* state, Severity severity, c16* format, va_list args)
+{
+	c16 buffer[ArrayCount(Notification::text)] = {};
+	_vsnwprintf_s(buffer, ArrayCount(buffer), format, args);
+
+	NotifyWindowsError(state, severity, buffer);
+}
+
+inline void
+NotifyWindowsErrorFormat(NotificationState* state, Severity severity, c16* format, ...)
+{
+	va_list args;
+	va_start(args, format);
+
+	NotifyWindowsErrorFormat(state, severity, format, args);
+
+	va_end(args);
 }
 
 // TODO: Implement a formal circular buffer, overload operator[], and remove this function
@@ -275,19 +295,30 @@ ProcessNotificationQueue(NotificationState* state)
 
 	Notification* notification = &state->queue[state->queueStart];
 
+	// NOTE: DT_VCENTER doesn't work on multiline text
+	// NOTE: Ellipsis is shown for horizontal overflow (too many words on a line)
+	// NOTE: Ellipsis is not shown for vertical overflow (too many lines)
+
+	// Sizing algorithm
+	// * Calculate desired multiline rect for text (no ellipsis)
+	// * Pad left and right
+	// * Clamp window width between min and max
+	// * Clamp text rect within window
+	// * Draw multline text, use ellipsis for overflow
+
 	// Resize
 	RECT textSizeRect = {};
 	iResult = DrawTextW(
 		state->bitmapDC,
 		notification->text, -1,
 		&textSizeRect,
-		DT_CALCRECT | DT_SINGLELINE
+		DT_CALCRECT
 	);
 	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
 
-	i32 textWidth = textSizeRect.right - textSizeRect.left;
+	u16 textWidth = u16(textSizeRect.right - textSizeRect.left);
 
-	u16 windowWidth = textWidth + 2*state->textPadding;
+	u16 windowWidth = textWidth + 2 * u16(state->textPadding.cx);
 	if (windowWidth < state->windowMinWidth) windowWidth = state->windowMinWidth;
 	if (windowWidth > state->windowMaxWidth) windowWidth = state->windowMaxWidth;
 
@@ -325,31 +356,21 @@ ProcessNotificationQueue(NotificationState* state)
 	previousColor = SetTextColor(state->bitmapDC, newColor);
 	WINDOWS_WARN_IF(previousColor == CLR_INVALID, return false, L"SetTextColor failed");
 
-	RECT textRect = {};
-	u32 flags = DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS;
-	iResult = DrawTextW(
-		state->bitmapDC,
-		notification->text, -1,
-		&textRect,
-		flags | DT_CALCRECT
-	);
-	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
-
-	i32 height = textRect.bottom - textRect.top;
-	i32 maxHeight = state->windowSize.cy;
+	i32 height = textSizeRect.bottom - textSizeRect.top;
+	i32 maxHeight = state->windowSize.cy - 2 * state->textPadding.cy;
 	if (height > maxHeight)
 		height = maxHeight;
 
-	textRect.left = state->textPadding;
-	textRect.top = (maxHeight - height) / 2;
-	textRect.right = state->windowSize.cx - state->textPadding;
-	textRect.bottom = state->windowSize.cy - (maxHeight - height) / 2;
+	textSizeRect.left = state->textPadding.cx;
+	textSizeRect.top = state->textPadding.cy + (maxHeight - height) / 2;
+	textSizeRect.right = state->windowSize.cx - state->textPadding.cx;
+	textSizeRect.bottom = state->windowSize.cy - state->textPadding.cy - (maxHeight - height) / 2;
 
 	iResult = DrawTextW(
 		state->bitmapDC,
 		notification->text, -1,
-		&textRect,
-		flags
+		&textSizeRect,
+		DT_CENTER | DT_WORD_ELLIPSIS | DT_NOCLIP
 	);
 	WARN_IF(!iResult, return false, L"DrawText failed: %i", iResult);
 
